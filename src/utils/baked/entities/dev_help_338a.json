@@ -1,0 +1,56 @@
+{
+    "uuid": "338a43be-c396-47b7-b37a-91d6b913fb59",
+    "name": "Dev Help",
+    "config": {
+        "_TYPE": "workflow",
+        "name": "Dev Help",
+        "avatar_path": "/home/jb/PycharmProjects/AgentPilot/docs/avatars/devhelp.png",
+        "description": "",
+        "members": [
+            {
+                "id": "1",
+                "linked_id": null,
+                "loc_x": 20,
+                "loc_y": 64,
+                "width": 450.0,
+                "height": 350.0,
+                "config": {
+                    "_TYPE": "user"
+                }
+            },
+            {
+                "id": "2",
+                "linked_id": "entities.99",
+                "loc_x": 100,
+                "loc_y": 80,
+                "width": 450.0,
+                "height": 377.0,
+                "config": {
+                    "avatar_path": "./avatars/devhelp.png",
+                    "chat.model": {
+                        "kind": "CHAT",
+                        "model_name": "claude-3-5-sonnet-20240620",
+                        "provider": "litellm",
+                        "model_params": {
+                            "structure.data": [],
+                            "xml_roles.data": []
+                        }
+                    },
+                    "chat.display_markdown": true,
+                    "chat.sys_msg": "k",
+                    "chat.preload.data": [],
+                    "tool": null,
+                    "id": null,
+                    "_TYPE": "agent"
+                }
+            }
+        ],
+        "inputs": [],
+        "options": {
+            "autorun": true,
+            "show_hidden_bubbles": false,
+            "show_nested_bubbles": false
+        },
+        "params": []
+    }
+}

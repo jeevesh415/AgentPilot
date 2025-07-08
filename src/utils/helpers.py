@@ -45,6 +45,8 @@ class ManagerController(dict):
                 -- ORDER BY pinned DESC, ordr, name
             """
 
+        sql.define_table(self.table_name)  # incase it's not defined yet
+
     def load(self):
         if not self.store_data:
             return
@@ -83,17 +85,28 @@ class ManagerController(dict):
         columns = ', '.join(f'`{col}`' for col in all_values.keys())
         placeholders = ', '.join(['?'] * len(all_values))
         values = tuple(all_values.values())
-
+ 
         try:
+            if 'uuid' in all_values:
+                uuid = all_values['uuid']
+                item_exists = sql.get_scalar(f"SELECT id FROM `{self.table_name}` WHERE `uuid` = ?", (uuid,))
+                if item_exists:
+                    set_query = ', '.join([f'`{col}` = ?' for col in all_values.keys()])
+                    values += (uuid,)
+                    # query = f"UPDATE `{self.table_name}` SET {set_query} WHERE `uuid` = ?"
+                    sql.execute(f"UPDATE `{self.table_name}` SET {set_query} WHERE `uuid` = ?", values)
+                    return
+                
             sql.execute(f"INSERT INTO `{self.table_name}` ({columns}) VALUES ({placeholders})", values)
-            if not skip_load:
-                self.load()
+
         except IntegrityError:
             display_message(self,
                 message='Item already exists',
                 icon=QMessageBox.Warning,
             )
-            # raise IntegrityError(f"Item with name '{name}' already exists in the database.")
+        finally:
+            if not skip_load:
+                self.load()
 
     def delete(self, key, where_field='id'):
         if self.table_name == 'contexts':  # todo create contexts manager
@@ -195,8 +208,8 @@ def get_module_type_folder_id(module_type):
         WHERE LOWER(name) = ?
             AND type = 'modules'
     """, (module_type.lower(),))
-    if not folder_id:
-        raise ValueError(f"Module type '{module_type}' not found in database.")
+    # if not folder_id:
+    #     raise ValueError(f"Module type '{module_type}' not found in database.")
     return folder_id
 
 
@@ -729,7 +742,7 @@ def get_metadata(config):
         return {k: v for k, v in class_data.items() if v is not None}
 
 
-    json_hash = hash_config(config, exclude=['auto_load'])
+    json_hash = hash_config(config, exclude=['load_on_startup'])
 
     code = config.get('data')
     if not code:

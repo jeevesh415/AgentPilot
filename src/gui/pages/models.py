@@ -1,3 +1,24 @@
+"""Models Page Module.
+
+This module provides the AI models management page for the Agent Pilot GUI interface.
+The page enables users to configure, test, and manage AI model connections across
+multiple providers, including OpenAI, Anthropic, Google, and local model servers.
+It supports over 100 different model providers through the LiteLLM integration.
+
+Key Features:
+- Model provider configuration and API key management
+- Support for multiple AI model types (text, image, voice, embedding)
+- Model testing and validation capabilities
+- Provider-specific settings and parameters
+- Model performance monitoring and usage tracking
+- Integration with the LiteLLM provider system
+- Custom model endpoint configuration
+- Audio playback for voice model testing
+
+The page extends ConfigDBTree to provide database-backed model management with
+specialized configuration widgets for different model types and providers.
+"""
+
 from typing_extensions import override
 
 from gui.fields.model import ModelComboBox

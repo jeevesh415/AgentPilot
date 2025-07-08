@@ -1,4 +1,27 @@
 
+"""
+Configuration widget for dynamic plugin selection and configuration management.
+
+This module provides the ConfigPlugin widget, which creates a dynamic interface for selecting
+and configuring plugins within Agent Pilot. The widget presents a dropdown for plugin selection
+and dynamically loads the appropriate configuration interface based on the selected plugin.
+
+Key features:
+- Dynamic plugin selection via dropdown interface
+- Automatic configuration widget loading based on plugin type
+- Support for multiple plugin types (AGENT, TOOLS, etc.)
+- Flexible plugin class resolution and instantiation
+- Integrated plugin configuration management
+- Customizable plugin label and sizing options
+- JSON configuration key management for plugin selection
+- Default plugin class fallback support
+
+The widget serves as a central component in Agent Pilot's plugin architecture, allowing users
+to select different plugin implementations and configure their specific settings through
+dynamically loaded configuration interfaces. This enables extensible functionality across
+various system components.
+"""  # unchecked
+
 from PySide6.QtWidgets import *
 from typing_extensions import override
 

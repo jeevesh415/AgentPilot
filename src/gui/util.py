@@ -2516,6 +2516,16 @@ def save_table_config(table_name, item_id, value, ref_widget=None, key_field='co
                 """, (value, item_id,))
     if table_name == 'modules':
         metadata = get_metadata(json.loads(value))
+        # is_baked 
+        # old_metadata = sql.get_scalar(f"SELECT metadata FROM {table_name} WHERE id = ?", 
+        #                                 (item_id,), load_json=True)
+        # old_hash = old_metadata['hash']
+        # new_hash = metadata['hash']
+        # if old_hash != new_hash:
+        #     sql.execute(f"""UPDATE `{table_name}` SET baked = 0 WHERE id = ?""", (item_id,))
+        # else:
+        #     sql.execute(f"""UPDATE `{table_name}` SET baked = 1 WHERE id = ?""", (item_id,))
+
         sql.execute(f"""UPDATE `{table_name}`
                         SET metadata = ?
                         WHERE id = ?

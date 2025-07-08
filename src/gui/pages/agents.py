@@ -1,3 +1,22 @@
+"""Agents Page Module.
+
+This module provides the agents management page for the Agent Pilot GUI interface.
+The page enables users to create, configure, and manage AI agents with their associated
+workflows, settings, and tools. It provides a comprehensive interface for agent
+administration and quick access to chat functionality.
+
+Key Features:
+- Agent creation, editing, and deletion
+- Workflow configuration and settings management
+- Folder-based organization for agent categorization
+- One-click chat access for agent testing
+- Search and filtering capabilities
+- Integrated configuration widget for detailed agent setup
+
+The page extends ConfigDBTree to provide database-backed agent management with
+a dual-panel interface showing the agent list and detailed configuration options.
+"""
+
 from typing_extensions import override
 from gui.widgets.config_db_tree import ConfigDBTree
 from gui.widgets.workflow_settings import WorkflowSettings
@@ -52,6 +71,7 @@ class Page_Entities(ConfigDBTree):
             ],
             layout_type='vertical',
             config_widget=self.Entity_Config_Widget(parent=self),
+            folder_config_widget=self.Folder_Config_Widget(parent=self),
             tree_header_hidden=True,
             readonly=True,
             searchable=True,

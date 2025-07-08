@@ -1,3 +1,23 @@
+"""Display Page Module.
+
+This module provides the display and appearance settings page for the Agent Pilot
+GUI interface. The page enables users to customize the visual appearance,
+themes, and display preferences of the application to suit their preferences
+and accessibility needs.
+
+Key Features:
+- Theme and color scheme customization
+- Font and text size configuration
+- Display layout and organization options
+- Accessibility settings and preferences
+- Visual appearance customization
+- Real-time preview of display changes
+- Integration with application styling systems
+
+The page provides comprehensive display customization options to enhance
+the user experience and accessibility of the Agent Pilot interface.
+"""
+
 import json
 
 from PySide6.QtWidgets import QMessageBox, QInputDialog

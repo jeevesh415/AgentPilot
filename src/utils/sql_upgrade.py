@@ -5,7 +5,7 @@ import shutil
 from utils import sql
 from packaging import version
 
-from utils.reset import bootstrap, ensure_system_folders
+from utils.reset import ensure_system_folders
 from utils.sql import ensure_column_in_tables
 
 
@@ -50,7 +50,7 @@ class SQLUpgrade:
             tables=[
                 'modules',
             ],
-            column_name='locked',
+            column_name='baked',
             column_type='INTEGER',
             default_value="0",
             not_null=True,

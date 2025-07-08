@@ -1,3 +1,25 @@
+"""Image Message Bubble GUI Module.
+
+This module provides the ImageBubble class, a specialized message bubble
+for displaying images in the chat interface. Image bubbles handle image
+loading, display, zoom functionality, and various image formats within
+conversations.
+
+Key Features:
+- Image display and rendering capabilities
+- Support for multiple image formats and sources
+- Zoom and pan functionality for image viewing
+- Image loading from files and URLs
+- Error handling for invalid or corrupted images
+- Integration with the message bubble framework
+- Dynamic image sizing and scaling
+- Image metadata and path handling
+
+Image bubbles provide a rich visual interface for viewing images
+within conversations, enabling multimedia communication and
+visual content sharing with AI systems.
+"""  # unchecked
+
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import Qt, QTextCursor, QTextDocument, QImage
 

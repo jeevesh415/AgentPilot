@@ -1,4 +1,26 @@
 
+"""Message Collection Widget Module.
+
+This module provides the MessageCollection widget, the core chat interface component
+that displays conversation messages, manages message flow, and handles real-time
+interactions with AI agents and workflows. It supports branching conversations,
+message editing, and rich media display.
+
+Key Features:
+- Real-time message display with streaming support
+- Conversation branching and message tree navigation
+- Rich message bubbles with multiple content types
+- Message editing and re-execution capabilities
+- Avatar and visual message presentation
+- Integration with the workflow execution system
+- Asynchronous message processing and updates
+- Context menu operations for message management
+
+The MessageCollection widget serves as the primary interface for user interactions
+with AI agents, providing a comprehensive chat experience with advanced features
+for conversation management and workflow execution.
+"""  # unchecked
+
 import asyncio
 import json
 import os

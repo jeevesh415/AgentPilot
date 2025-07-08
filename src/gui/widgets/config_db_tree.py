@@ -1,3 +1,24 @@
+"""Configuration Database Tree Widget Module.
+
+This module provides the ConfigDBTree widget, a specialized tree view component
+that combines database-backed data management with hierarchical configuration
+interfaces. It serves as the foundation for most management pages in Agent Pilot,
+providing consistent CRUD operations and configuration management.
+
+Key Features:
+- Database-integrated tree view with real-time synchronization
+- Dual-panel interface with item list and configuration details
+- Manager integration for specialized data handling
+- Folder-based organization with drag-and-drop support
+- Search and filtering capabilities
+- Baked data integration for default configurations
+- Context menu operations for item management
+- Splitter layout with customizable panel sizes
+
+The ConfigDBTree is extended by page-specific classes to provide tailored
+interfaces for agents, blocks, tools, and other manageable entities.
+"""
+
 import json
 import os
 import sqlite3
@@ -23,7 +44,7 @@ class ConfigDBTree(ConfigTree):
     A widget that displays a tree of items from the db, with buttons to add and delete items.
     Can contain a config widget shown either to the right of the tree or below it,
     representing the config for each item in the tree.
-    """
+    """  # unchecked
     param_schema = [
         {
             'text': 'Table name',
@@ -124,7 +145,7 @@ class ConfigDBTree(ConfigTree):
         self.query_params = kwargs.get('query_params', {})
         self.propagate = False
 
-        self.extra_data = kwargs.get('extra_data', None)
+        # self.extra_data = kwargs.get('extra_data', None)
         # # # self.db_config_field = kwargs.get('db_config_field', 'config')
         # # # self.config_buttons = kwargs.get('config_buttons', None)
         # # # self.user_editable = True
@@ -226,9 +247,13 @@ class ConfigDBTree(ConfigTree):
 
         # query = self.query if not self.filterable else self.query.replace('{{kind}}', self.filter_widget.get_kind())
         data = sql.get_results(query=self.query, params=self.query_params)
-        if callable(self.extra_data):
-            extra_data = self.extra_data()
-            data.extend(extra_data)
+        
+        # # if callable(self.extra_data):
+        # #     extra_data = self.extra_data()
+        # #     data.extend(extra_data)
+        # if hasattr(self, 'extra_data'):
+        #     extra_data = self.extra_data()
+        #     data.extend(extra_data)
 
         self.tree.load(
             data=data,
@@ -295,6 +320,12 @@ class ConfigDBTree(ConfigTree):
             item_id=item_id,
             value=json.dumps(config),
         )
+
+        from system import manager
+
+        auto_bake = manager.config.get('system.auto_bake', False)
+        if auto_bake:
+            self.bake_item(force=True)
 
     def on_edited(self):
         if self.manager is not None:
@@ -474,6 +505,17 @@ class ConfigDBTree(ConfigTree):
                 return
 
             try:
+                is_locked = sql.get_scalar(f"SELECT locked FROM {self.table_name} WHERE id = ?", (item_id,)) == 1
+                if is_locked:
+                    display_message(self,
+                        message='Item is locked',
+                        icon=QMessageBox.Information,
+                    )
+                    return
+            except sqlite3.OperationalError:
+                pass
+
+            try:
                 sql.execute(f"""
                     UPDATE `{self.table_name}`
                     SET `{col_key}` = ?
@@ -574,6 +616,17 @@ class ConfigDBTree(ConfigTree):
             if not item_id:
                 return
 
+            try:
+                is_locked = sql.get_scalar(f"SELECT locked FROM {self.table_name} WHERE id = ?", (item_id,)) == 1
+                if is_locked:
+                    display_message(self,
+                        message='Item is locked',
+                        icon=QMessageBox.Information,
+                    )
+                    return
+            except sqlite3.OperationalError:
+                pass
+
             del_opts = self.del_item_options
             if not del_opts:
                 return
@@ -626,6 +679,18 @@ class ConfigDBTree(ConfigTree):
             self.load()
 
         else:
+            item_id = self.get_selected_item_id()
+            try:
+                is_locked = sql.get_scalar(f"SELECT locked FROM {self.table_name} WHERE id = ?", (item_id,)) or False
+                if is_locked == 1:
+                    display_message(self,
+                        message='Item is locked',
+                        icon=QMessageBox.Information,
+                    )
+                    return
+            except sqlite3.OperationalError:
+                pass
+
             current_name = item.text(0)
             dlg_title, dlg_prompt = ('Rename item', 'Enter a new name for the item')
             text, ok = QInputDialog.getText(self, dlg_title, dlg_prompt, text=current_name)
@@ -829,17 +894,18 @@ class ConfigDBTree(ConfigTree):
 
         menu.exec_(QCursor.pos())
 
-    def bake_item(self):
+    def bake_item(self, force=False):
         if not self.items_bakeable:
             return
 
         # check if running from source code or executable
         is_exe = getattr(sys, 'frozen', False)
         if is_exe:
-            display_message(self,
-                message='Baking is not supported from binaries.',
-                icon=QMessageBox.Information,
-            )
+            if not force:
+                display_message(self,
+                    message='Baking is not supported from binaries.',
+                    icon=QMessageBox.Information,
+                )
             return
 
         table_name = self.table_name
@@ -888,14 +954,15 @@ class ConfigDBTree(ConfigTree):
 
         existing_baked = get_all_baked_json(table_name)
         if uuid in [baked_json['uuid'] for baked_json in existing_baked.values()]:
-            dr = display_message_box(
-                icon=QMessageBox.Question,
-                title="Overwrite item",
-                text=f"Item with UUID {uuid} already exists in baked items. Overwrite?",
-                buttons=QMessageBox.Yes | QMessageBox.No,
-            )
-            if dr != QMessageBox.Yes:
-                return
+            if not force:
+                dr = display_message_box(
+                    icon=QMessageBox.Question,
+                    title="Overwrite item",
+                    text=f"Item with UUID {uuid} already exists in baked items. Overwrite?",
+                    buttons=QMessageBox.Yes | QMessageBox.No,
+                )
+                if dr != QMessageBox.Yes:
+                    return
             # file_path = key where value.uuid == uuid
             existing_path = next((path for path, baked_json in existing_baked.items() if baked_json['uuid'] == uuid), None)
             # rename the existing file to new filename
@@ -903,17 +970,17 @@ class ConfigDBTree(ConfigTree):
             # # safe_filename = os.path.basename(file_path)
             # overwriting_path = file_path
 
-        for file_path, baked_json in existing_baked.items():
-            if file_path == safe_filepath:
-                continue
-            if baked_json['uuid'] == uuid:
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    display_message(self,
-                        message=f"Failed to remove existing baked file {file_path}.\nError: {e}",
-                        icon=QMessageBox.Warning,
-                    )
+        # for file_path, baked_json in existing_baked.items():
+        #     if file_path == safe_filepath:
+        #         continue
+        #     if baked_json['uuid'] == uuid:
+        #         try:
+        #             os.remove(file_path)
+        #         except Exception as e:
+        #             display_message(self,
+        #                 message=f"Failed to remove existing baked file {file_path}.\nError: {e}",
+        #                 icon=QMessageBox.Warning,
+        #             )
 
         wrapped_config = {
             col_name: item_tuple[i] for i, col_name in enumerate(bake_columns)
@@ -929,24 +996,25 @@ class ConfigDBTree(ConfigTree):
             with open(safe_filepath, 'w', encoding='utf-8') as f:
                 json.dump(wrapped_config, f, indent=4, ensure_ascii=False)
 
-            # 5. Inform the user of the successful operation
-            display_message(self,
-                            message=f"Successfully baked item to:\n{safe_filepath}",
-                            icon=QMessageBox.Information,
-                            )
+            if not force:
+                display_message(
+                    self,
+                    message=f"Successfully baked item to:\n{safe_filepath}",
+                    icon=QMessageBox.Information,
+                )
 
         except IOError as e:
-            # Handle potential file system errors (e.g., permissions)
-            display_message(self,
-                            message=f"Failed to write file.\nError: {e}",
-                            icon=QMessageBox.Critical,
-                            )
+            display_message(
+                self,
+                message=f"Failed to write file.\nError: {e}",
+                icon=QMessageBox.Critical,
+            )
         except Exception as e:
-            # Catch any other unexpected errors
-            display_message(self,
-                            message=f"An unexpected error occurred during baking.\nError: {e}",
-                            icon=QMessageBox.Critical,
-                            )
+            display_message(
+                self,
+                message=f"An unexpected error occurred during baking.\nError: {e}",
+                icon=QMessageBox.Critical,
+            )
 
     def show_history_context_menu(self):
         if not self.versionable:

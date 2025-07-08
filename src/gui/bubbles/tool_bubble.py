@@ -1,3 +1,25 @@
+"""Tool Message Bubble GUI Module.
+
+This module provides the ToolBubble class, a specialized message bubble
+for displaying and executing tool calls in the chat interface. Tool bubbles
+enable visualization of tool parameters, execution control, and result display
+for AI-powered tool interactions.
+
+Key Features:
+- Tool call visualization and parameter display
+- Interactive tool parameter configuration
+- Tool execution and rerun capabilities
+- JSON parameter parsing and validation
+- Integration with the tool management system
+- Dynamic tool schema handling
+- Tool result display and formatting
+- Automatic tool execution timing
+
+Tool bubbles provide a comprehensive interface for viewing, configuring,
+and executing AI tool calls within conversations, enabling powerful
+AI-driven automation and system integration.
+"""  # unchecked
+
 import json
 from typing import Dict, Any
 

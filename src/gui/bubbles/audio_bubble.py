@@ -1,3 +1,25 @@
+"""Audio Message Bubble GUI Module.
+
+This module provides the AudioBubble class, a specialized message bubble
+for displaying and playing audio content in the chat interface. Audio bubbles
+handle audio file display, playback controls, and audio content management
+within conversations.
+
+Key Features:
+- Audio file display and metadata handling
+- Audio playback controls and functionality
+- Support for multiple audio formats
+- Integration with media playback systems
+- Audio file path and URL handling
+- Interactive play/pause controls
+- Audio content visualization
+- Error handling for invalid audio files
+
+Audio bubbles provide an interactive interface for playing and
+managing audio content within conversations, enabling multimedia
+communication and audio-based interactions with AI systems.
+"""  # unchecked
+
 import os
 from utils.helpers import get_json_value, message_button
 from gui.bubbles import MessageBubble, MessageButton

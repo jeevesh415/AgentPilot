@@ -204,6 +204,7 @@ def define_table(table_name, relations=None):
                 "metadata"	TEXT NOT NULL DEFAULT '{{}}',
                 "folder_id"	INTEGER DEFAULT NULL,
                 "pinned"	INTEGER DEFAULT 0,
+                "baked"	INTEGER DEFAULT 0,
                 "ordr"	INTEGER DEFAULT 0,
                 PRIMARY KEY("id" AUTOINCREMENT)
         )

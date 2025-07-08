@@ -1,3 +1,25 @@
+"""ElevenLabs Provider Module.
+
+This module provides the ElevenLabs text-to-speech provider integration for
+Agent Pilot, enabling high-quality voice synthesis and speech generation
+capabilities. The provider supports multiple voices, language options,
+and advanced speech synthesis features.
+
+Key Features:
+- High-quality text-to-speech synthesis
+- Multiple voice options and configurations
+- Voice cloning and custom voice support
+- Real-time audio generation and playback
+- Integration with Agent Pilot's voice model system
+- Temporary file management for audio output
+- Error handling and user feedback
+- API key management and authentication
+
+The ElevenLabs provider enables Agent Pilot to generate natural-sounding
+speech for agent responses, enhancing the conversational experience with
+high-quality voice output.
+"""  # unchecked
+
 import json
 import os
 import tempfile

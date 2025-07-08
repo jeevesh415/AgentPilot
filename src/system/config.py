@@ -1,3 +1,21 @@
+"""Configuration Manager Module.
+
+This module provides the ConfigManager class for managing application-wide configuration settings
+within the Agent Pilot system. The ConfigManager handles persistent storage and retrieval of
+configuration data, automatically synchronizing changes between memory and the database.
+
+Key Features:
+- Automatic persistence of configuration changes to database
+- JSON-based configuration storage and serialization
+- Real-time configuration updates with immediate save operations
+- Integration with application telemetry systems
+- Dictionary-like interface for easy configuration access and modification
+
+The ConfigManager extends ManagerController to provide specialized configuration management
+capabilities, ensuring that all application settings are consistently maintained and immediately
+persisted whenever changes occur.
+"""  # unchecked
+
 import json
 
 from typing_extensions import override

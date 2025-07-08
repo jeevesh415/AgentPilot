@@ -1,3 +1,25 @@
+"""User Message Bubble GUI Module.
+
+This module provides the UserBubble class, a specialized message bubble
+for displaying user messages in the chat interface. User bubbles enable
+message editing, resending, and user interaction controls within the
+conversation view.
+
+Key Features:
+- User message display and editing capabilities
+- Message resending and retry functionality
+- Editable message content and formatting
+- Interactive message controls and buttons
+- Integration with workflow execution
+- Branch management for message editing
+- Message history and version control
+- Theme and styling support
+
+User bubbles provide an interactive interface for users to view, edit,
+and manage their messages within conversations, enabling flexible
+communication with AI systems.
+"""  # unchecked
+
 from gui.bubbles import MessageBubble, MessageButton
 from utils.helpers import message_button
 

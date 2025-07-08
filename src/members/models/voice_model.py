@@ -1,4 +1,26 @@
 
+"""Voice Model Member Module.
+
+This module provides the VoiceModel member, a specialized model for processing
+and generating audio/voice content within workflows. Voice models enable
+text-to-speech synthesis, voice cloning, and audio processing capabilities
+integrated with the Agent Pilot ecosystem.
+
+Key Features:
+- Text-to-speech synthesis and voice generation
+- Integration with voice generation APIs and models
+- Multiple voice selection and configuration
+- Audio file handling and playback
+- Workflow integration for voice content creation
+- Configurable voice generation parameters
+- Support for various voice AI model providers
+- Real-time audio processing and streaming
+
+Voice models expand workflow capabilities to include audio content
+generation and processing, enabling voice-enabled AI applications
+within the Agent Pilot framework.
+"""
+
 import json
 import os
 import re

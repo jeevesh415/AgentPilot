@@ -1,3 +1,12 @@
+"""
+Float field widget for configurable floating-point number input.
+
+This module provides a Float field widget that extends QDoubleSpinBox to create
+configurable numeric input fields for floating-point values. It supports customizable
+minimum/maximum ranges, step values, and automatically integrates with the
+configuration system. Includes an option_schema for field configuration.
+"""  # unchecked
+
 from PySide6.QtWidgets import QDoubleSpinBox
 
 

@@ -1,3 +1,25 @@
+"""Workflow Settings Widget Module.
+
+This module provides the WorkflowSettings widget, a comprehensive interface for
+configuring and designing AI workflows in Agent Pilot. The widget includes a
+visual workflow designer with drag-and-drop functionality, member configuration,
+and real-time workflow visualization.
+
+Key Features:
+- Visual workflow designer with graphical member representation
+- Drag-and-drop workflow construction and modification
+- Member configuration and relationship management
+- Real-time workflow execution flow visualization
+- Multi-member workflow support with parallel and sequential execution
+- Input/output configuration for workflow parameters
+- Visual feedback for workflow state and connections
+- Integration with the workflow execution system
+
+The WorkflowSettings widget enables users to create complex multi-agent
+workflows through an intuitive visual interface while maintaining precise
+control over member configurations and execution flow.
+"""  # unchecked
+
 import json
 import math
 import sqlite3
@@ -413,8 +435,8 @@ class WorkflowSettings(ConfigWidget):
         self.view.verticalScrollBar().setValue(min_scroll_y)
 
     def set_edit_mode(self, state):
-        # if not self.compact_mode:
-        #     return
+        if not self.compact_mode:
+            return
 
         self.view.temp_block_move_flag = True
 
@@ -1937,6 +1959,7 @@ class WorkflowSettings(ConfigWidget):
                         'num_lines': 10,
                         'stretch_x': True,
                         'stretch_y': True,
+                        'transparent': True,
                         'placeholder_text': 'Description',
                         'gen_block_folder_name': 'todo',
                         'label_position': None,

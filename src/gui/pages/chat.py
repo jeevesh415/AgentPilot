@@ -1,3 +1,25 @@
+"""Chat Page Module.
+
+This module provides the main chat interface for Agent Pilot, enabling real-time
+conversations with AI agents and workflows. The chat page serves as the primary
+interaction hub where users can engage with their configured agents, execute
+workflows, and manage conversation history.
+
+Key Features:
+- Real-time chat interface with streaming responses
+- Multi-agent workflow execution and coordination
+- Message collection with conversation branching
+- Workflow configuration and parameter management
+- Avatar display and visual conversation elements
+- File attachment and media support
+- Conversation history and message management
+- Dynamic UI updates during agent interactions
+
+The page integrates with the workflow execution system to provide seamless
+agent interactions while maintaining conversation context and enabling
+complex multi-member workflow orchestration.
+"""
+
 import json
 import os
 

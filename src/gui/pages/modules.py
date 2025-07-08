@@ -1,20 +1,38 @@
+"""Modules Page Module.
+
+This module provides the modules management page for the Agent Pilot GUI interface.
+The page enables users to manage, install, and configure the various module types
+that extend Agent Pilot's functionality, including custom pages, widgets, providers,
+and other extensible components.
+
+Key Features:
+- Module installation and uninstallation
+- Module type management (managers, pages, widgets, etc.)
+- Runtime module loading and configuration
+- Module dependency tracking
+- Custom module development support
+- Module status monitoring and updates
+- Integration with the dynamic module system
+
+The page provides comprehensive module lifecycle management, enabling users to
+extend Agent Pilot's capabilities through custom and third-party modules.
+"""
+
 from PySide6.QtGui import Qt
-from PySide6.QtWidgets import QLabel, QWidget, QSizePolicy
-import uuid
+from PySide6.QtWidgets import QLabel, QWidget, QSizePolicy, QMessageBox
 
 from gui.widgets.config_widget import ConfigWidget
 from gui.widgets.config_db_tree import ConfigDBTree
 from gui.widgets.config_fields import ConfigFields
-from gui.util import IconButton, find_main_widget, CHBoxLayout, CVBoxLayout, \
-    save_table_config, ToggleIconButton
+from gui.util import IconButton, find_main_widget, CHBoxLayout, CVBoxLayout
 from utils import sql
-from utils.helpers import set_module_type, get_module_type_folder_id
+from utils.helpers import display_message, set_module_type
 
 
 @set_module_type(module_type='Pages')
 class Page_Module_Settings(ConfigDBTree):
-    display_name = 'Modulesss'
-    icon_path = ":/resources/icon-jigsa.png"
+    display_name = 'Modules'
+    icon_path = ":/resources/icon-jigsaw.png"
     page_type = 'any'  # either 'settings', 'main', or 'any' ('any' means it can be pinned between main and settings)
 
     def __init__(self, parent):
@@ -26,7 +44,7 @@ class Page_Module_Settings(ConfigDBTree):
                 SELECT
                     name,
                     id,
-                    locked,
+                    baked,
                     -- COALESCE(json_extract(config, '$.enabled'), 1),
                     folder_id
                 FROM modules
@@ -44,12 +62,12 @@ class Page_Module_Settings(ConfigDBTree):
                     'visible': False,
                 },
                 {
-                    'key': 'locked',
+                    'key': 'baked',
                     'type': int,
                     'visible': False,
                 },
             ],
-            extra_data=lambda: self.extra_data(),
+            # extra_data=lambda: self.extra_data(),
             add_item_options={'title': 'Add module', 'prompt': 'Enter a name for the module:'},
             del_item_options={'title': 'Delete module', 'prompt': 'Are you sure you want to delete this module?'},
             folder_key='modules',
@@ -57,37 +75,123 @@ class Page_Module_Settings(ConfigDBTree):
             layout_type='horizontal',
             tree_header_hidden=True,
             config_widget=Module_Config_Widget(parent=self),
+            folder_config_widget=self.Folder_Config_Widget(parent=self),
             searchable=True,
             default_item_icon=':/resources/icon-jigsaw-solid.png',
         )
         self.splitter.setSizes([400, 1000])
+    
+    # def on_edited(self):
+    #     config = self.get_config()
+    #     hash = hash_config(config, exclude=['auto_load'])
 
-    def bake_item(self):
+    #     item_id = self.get_selected_item_id()
+    #     if not item_id:
+    #         return
+        
+    #     is_baked = sql.get_scalar('SELECT baked FROM modules WHERE id = ?', (item_id,)) == 1
+    #     if is_baked:
+    #         self.bake_item()
+
+    def bake_item(self, force=False):
         item_id = self.get_selected_item_id()
         if not item_id:
             return
 
-        from system import manager
-        module_id = item_id
-        module_type = manager.modules.get(module_id, {}).get('type', None)
-
-    def extra_data(self):
-        from system import manager
-        extra_data = []
-        module_types = {name: controller for name, controller in manager.modules.type_controllers.items() if name is not None}
-        for module_type in module_types:
-            type_folder_id = get_module_type_folder_id(module_type)
-            module_type_modules = manager.modules.get_modules_in_folder(
-                module_type=module_type,
-                fetch_keys=('name', 'class',)
+        # from system import manager
+        # import json
+        # import os
+        from pathlib import Path
+        
+        # Get module data from database
+        module_config = sql.get_scalar('SELECT config FROM modules WHERE id = ?', (item_id,), load_json=True)
+        module_name = sql.get_scalar('SELECT name FROM modules WHERE id = ?', (item_id,))
+        folder_id = sql.get_scalar('SELECT folder_id FROM modules WHERE id = ?', (item_id,))
+        
+        if not module_config or not module_name:
+            print(f"Module data not found for id {item_id}")
+            return
+            
+        # Get folder name (module type) from folder_id
+        folder_name = None
+        if folder_id:
+            folder_name = sql.get_scalar('SELECT name FROM folders WHERE id = ?', (folder_id,))
+        
+        if not folder_name:
+            print(f"Folder not found for module {module_name}")
+            return
+            
+        # Get source code from config
+        source_code = module_config.get('data', '')
+        if not source_code:
+            print(f"No source code found in module {module_name}")
+            return
+            
+        # # Determine the file path based on module type
+        # type_locations = {
+        #     'managers': 'src/system',
+        #     'pages': 'src/gui/pages', 
+        #     'widgets': 'src/gui/widgets',
+        #     'environments': 'src/system/environments',
+        #     'providers': 'src/system/providers',
+        #     'members': 'src/members',
+        #     'bubbles': 'src/gui/bubbles',
+        #     'behaviors': 'src/system/behaviors',
+        #     'fields': 'src/gui/fields',
+        # }
+        
+        base_path = self.manager.type_locations.get(folder_name.lower())
+        if not base_path:
+            display_message(self,
+                message=f"Unknown module type: {folder_name}",
+                icon=QMessageBox.Warning,
             )
-            for module_name, module_class in module_type_modules:
-                # if module_class is None:
-                #     print(f"Module class for {module_name} in {module_type} is None, skipping.")
-                #     continue
-                extra_data.append((module_name, module_name, 1, type_folder_id))
+            return
+            
+        # Construct file path
+        file_path = Path(base_path) / f"{module_name.lower()}.py"
+        
+        # Check if file exists and ask for confirmation if not forcing
+        if file_path.exists():
 
-        return extra_data
+            # # Read current source code and compare to current config
+            # current_source_code = file_path.read_text(encoding='utf-8')
+            # if current_source_code == source_code:
+            #     print(f"Source code for {module_name} is the same as the current config, skipping.")
+            #     return
+            
+            if not force:
+                retval = QMessageBox.question(
+                    self,
+                    "File Exists",
+                    f"The file {file_path} already exists. Do you want to overwrite it?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if retval != QMessageBox.Yes:
+                    return
+        
+        try:
+            # Ensure directory exists
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write source code to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(source_code)
+            
+            # Update the module to mark it as baked
+            sql.execute('UPDATE modules SET baked = 1 WHERE id = ?', (item_id,))
+            
+            if not force:
+                display_message(self,
+                    message=f"Successfully baked module {module_name} to {file_path}",
+                    icon=QMessageBox.Information,
+                )
+            
+        except Exception as e:
+            display_message(self,
+                message=f"Error baking module {module_name}: {e}",
+                icon=QMessageBox.Critical,
+            )
 
     # def extra_data(self):
     #     from system import manager
@@ -106,41 +210,59 @@ class Page_Module_Settings(ConfigDBTree):
     #             extra_data.append((module_name, module_name, 1, type_folder_id))
 
     #     return extra_data
-    #             add_module(
-    #                 module_class=module_class,
-    #                 module_name=module_name,
-    #                 folder_name=module_type,
-    #             )
-    #     from system import manager
-    #     import inspect
 
-    #     # Get the module name and folder (type) from the DB
-    #     module_name = sql.get_scalar('SELECT name FROM modules WHERE id = ?', (item_id,))
-    #     folder_id = sql.get_scalar('SELECT folder_id FROM modules WHERE id = ?', (item_id,))
-    #     if not module_name or not folder_id:
-    #         return None
-    #     folder_name = sql.get_scalar('SELECT name FROM folders WHERE id = ?', (folder_id,))
-    #     if not folder_name:
-    #         return None
+    # # def extra_data(self):
+    # #     from system import manager
+    # #     extra_data = []
+    # #     module_types = {name: controller for name, controller in manager.modules.type_controllers.items() if name is not None}
+    # #     for module_type in module_types:
+    # #         type_folder_id = get_module_type_folder_id(module_type)
+    # #         module_type_modules = manager.modules.get_modules_in_folder(
+    # #             module_type=module_type,
+    # #             fetch_keys=('name', 'class',)
+    # #         )
+    # #         for module_name, module_class in module_type_modules:
+    # #             # if module_class is None:
+    # #             #     print(f"Module class for {module_name} in {module_type} is None, skipping.")
+    # #             #     continue
+    # #             extra_data.append((module_name, module_name, 1, type_folder_id))
 
-    #     # Try to get the class from source
-    #     module_class = manager.modules.get_module_class(folder_name, module_name)
-    #     if not module_class:
-    #         return None
+    # #     return extra_data
+    # #             add_module(
+    # #                 module_class=module_class,
+    # #                 module_name=module_name,
+    # #                 folder_name=module_type,
+    # #             )
+    # #     from system import manager
+    # #     import inspect
 
-    #     try:
-    #         module_file_path = inspect.getfile(module_class)
-    #         with open(module_file_path, 'r', encoding='utf-8') as file:
-    #             module_source = file.read()
-    #         return {
-    #             'data': module_source,
-    #             'file_path': module_file_path,
-    #             'module_class': module_class.__name__,
-    #             'module_type': folder_name,
-    #         }
-    #     except Exception as e:
-    #         print(f"Error getting inferred data for module {module_name}: {e}")
-    #         return None
+    # #     # Get the module name and folder (type) from the DB
+    # #     module_name = sql.get_scalar('SELECT name FROM modules WHERE id = ?', (item_id,))
+    # #     folder_id = sql.get_scalar('SELECT folder_id FROM modules WHERE id = ?', (item_id,))
+    # #     if not module_name or not folder_id:
+    # #         return None
+    # #     folder_name = sql.get_scalar('SELECT name FROM folders WHERE id = ?', (folder_id,))
+    # #     if not folder_name:
+    # #         return None
+
+    # #     # Try to get the class from source
+    # #     module_class = manager.modules.get_module_class(folder_name, module_name)
+    # #     if not module_class:
+    # #         return None
+
+    # #     try:
+    # #         module_file_path = inspect.getfile(module_class)
+    # #         with open(module_file_path, 'r', encoding='utf-8') as file:
+    # #             module_source = file.read()
+    # #         return {
+    # #             'data': module_source,
+    # #             'file_path': module_file_path,
+    # #             'module_class': module_class.__name__,
+    # #             'module_type': folder_name,
+    # #         }
+    # #     except Exception as e:
+    # #         print(f"Error getting inferred data for module {module_name}: {e}")
+    # #         return None
 
 class Module_Config_Widget(ConfigFields):
     def __init__(self, parent):
@@ -242,33 +364,48 @@ class Module_Config_Widget(ConfigFields):
     def after_init(self):
         super().after_init()
 
+        # avatar_layout = self.icon_path.layout()
+
         self.lbl_status = QLabel(self)
         self.lbl_status.setProperty("class", 'dynamic_color')
         self.lbl_status.setMaximumWidth(250)
-        # move down 50 px
-        self.lbl_status.move(0, 35)
-        # self.la
-        # self.splitter.setSizes([200, 700])
+        # avatar_layout.insertWidget(2, self.lbl_status)
+        # move to top right corner
+        self.lbl_status.move(40, 30)
+        # # self.la
+        # # self.splitter.setSizes([200, 700])
+    
+    def update_config(self):
+        module_id = self.get_item_id()
+        module_metadata = sql.get_scalar('SELECT metadata FROM modules WHERE id = ?', (module_id,), load_json=True)
+        module_hash = module_metadata.get('hash')
+
+        super().update_config()
 
     def get_item_id(self):
         return self.parent.get_selected_item_id()
-
+    
     def load(self):
         # return
         super().load()
 
-        from system import manager
+        # from system import manager
         module_id = self.get_item_id()
         # module_metadata = manager.modules.get_cell(module_id, 'metadata')
-        module_metadata = sql.get_scalar('SELECT metadata FROM modules WHERE id = ?',
-                                         (module_id,), load_json=True)
+        module_metadata = sql.get_scalar('SELECT metadata FROM modules WHERE id = ?', (module_id,), load_json=True)
         if not module_metadata:
             self.set_status('Unloaded')
             return
 
         module_hash = module_metadata.get('hash')
+        is_baked = sql.get_scalar('SELECT baked FROM modules WHERE id = ?', (module_id,)) == 1
         is_loaded = False  # module_id in manager.modules.loaded_module_hashes
-        if is_loaded:
+        if is_baked:
+            baked_hash = sql.get_scalar('SELECT uuid FROM modules WHERE id = ?', (module_id,))
+
+            self.set_status('Baked')
+            
+        elif is_loaded:
             loaded_hash = manager.modules.loaded_module_hashes[module_id]
             is_modified = module_hash != loaded_hash
             if is_modified:
@@ -284,6 +421,7 @@ class Module_Config_Widget(ConfigFields):
         status_color_classes = {
             'Loaded': '#6aab73',
             'Unloaded': '#B94343',
+            'Baked': '#438BB9',
             'Modified': '#438BB9',
             'Error': '#B94343',
             'Externally Modified': '#B94343',

@@ -692,10 +692,10 @@ class Main(QMainWindow):
         self.manager._main_gui = self
         self.manager.load()
 
-        # if 'AP_DEV_MODE' in os.environ.keys():
-        #     from utils.reset import bootstrap_modules, reset_table
-        #     # reset_table(table_name='modules')
-        #     bootstrap_modules()
+        if 'AP_DEV_MODE' in os.environ.keys():
+            from utils.reset import bootstrap
+            # reset_table(table_name='modules')
+            bootstrap()
 
         get_stylesheet()  # init stylesheet
 
@@ -863,8 +863,12 @@ class Main(QMainWindow):
         ensure_column_in_tables(
             tables=[
                 'modules',
+                'entities',
+                'blocks',
+                'tools',
+                'environments',
             ],
-            column_name='locked',
+            column_name='baked',
             column_type='INTEGER',
             default_value="0",
             not_null=True,

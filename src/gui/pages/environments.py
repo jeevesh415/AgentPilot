@@ -1,3 +1,23 @@
+"""Environments Page Module.
+
+This module provides the execution environments management page for the Agent Pilot
+GUI interface. Environments define the runtime contexts where code execution and
+workflow operations take place, including Docker containers, virtual environments,
+and integrated execution contexts.
+
+Key Features:
+- Environment creation and configuration
+- Support for multiple environment types (Docker, integrated, etc.)
+- Environment isolation and security settings
+- Plugin-based environment providers
+- Environment status monitoring and management
+- Integration with code execution systems
+- Custom environment development support
+
+The page enables users to configure safe and isolated execution environments
+for running user code, agent tools, and workflow operations.
+"""
+
 from gui.widgets.config_db_tree import ConfigDBTree
 from gui.widgets.config_joined import ConfigJoined
 from gui.widgets.config_plugin import ConfigPlugin

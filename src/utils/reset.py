@@ -7,7 +7,7 @@ import sys
 from PySide6.QtWidgets import QMessageBox
 
 from utils import sql
-from utils.helpers import display_message_box
+from utils.helpers import display_message_box, hash_config
 
 
 def reset_application(force=False, preserve_audio_msgs=False):  # todo temp preserve_audio_msgs
@@ -292,7 +292,7 @@ def reset_application(force=False, preserve_audio_msgs=False):  # todo temp pres
 
 def bootstrap():
     # ########################## APIS + MODELS ############################### #
-    reset_models(preserve_keys=True)
+    # reset_models(preserve_keys=True)
 
     # ############################# ENTITIES ############################### #
 
@@ -391,20 +391,21 @@ def bootstrap():
     # )
 
     # ################## AGENTS, BLOCKS, TOOLS, ENVS ########################################
-    for table_name in ['agents', 'blocks', 'tools', 'environments']:
+    # for table_name in ['agents', 'blocks', 'tools', 'environments']:
 
-        reset_table(
-            table_name=table_name,
-            delete_existing=False,
-            item_configs={}
-        )
+    #     reset_table(
+    #         table_name=table_name,
+    #         delete_existing=False,
+    #         item_configs={}
+    #     )
 
     # ########################### MODULES ########################################
-    reset_table(
-        table_name='modules',
-        delete_existing=False,
-        item_configs={}
-    )
+    # reset_table(
+    #     table_name='modules',
+    #     delete_existing=False,
+    #     item_configs={}
+    # )
+    bootstrap_entities()
     bootstrap_modules()
 
     # # ########################### ENVS ########################################
@@ -420,7 +421,48 @@ def bootstrap():
     # )
 
 def bootstrap_entities():
-    pass
+    import os
+    import json
+    from pathlib import Path
+    
+    # Get the baked directory path
+    baked_dir = Path(__file__).parent / 'baked'
+    
+    if not baked_dir.exists():
+        print(f"Baked directory not found: {baked_dir}")
+        return
+    
+    from system import manager
+    # Iterate through each folder (table name) in the baked directory
+    for table_folder in baked_dir.iterdir():
+        if not table_folder.is_dir():
+            continue
+            
+        table_name = table_folder.name
+                
+        if table_name == 'entities':
+            table_name = 'agents'  # todo rename
+        mgr = getattr(manager, table_name, None)
+        if not mgr:
+            print(f"Manager for {table_name} not found")
+            continue
+        
+        # Iterate through each JSON file in the table folder
+        for json_file in table_folder.glob('*.json'):
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                mgr.add(
+                    uuid=data['uuid'],
+                    name=data['name'],
+                    config=data['config'],
+                    baked=1,
+                )
+            except json.JSONDecodeError as e:
+                print(f"Error reading JSON file {json_file}: {e}")
+            except Exception as e:
+                print(f"Error processing file {json_file}: {e}")
 
 
 def bootstrap_modules():
@@ -431,13 +473,6 @@ def bootstrap_modules():
 
         with open(module_file_path, 'r', encoding='utf-8') as file:
             module_source = file.read()
-
-        # if bake_mode == 'CLASS':
-        #     class_source = textwrap.dedent(inspect.getsource(module_class))
-        #     class_source = re.sub(r'@set_module_class\((.*?)\)', '', class_source)
-        #     module_imports = '\n'.join(re.findall(r'^(?:import|from).*?$', module_source, re.MULTILINE))
-        #
-        #     module_source = f'{module_imports}\n\n\n{class_source}'
 
         if extra_imports:
             module_source = f'{extra_imports}\n{module_source}'
@@ -451,11 +486,12 @@ def bootstrap_modules():
             name=module_name,
             config=config,
             folder_name=folder_name,
+            baked=1,
             locked=1,
-            skip_load=True
+            skip_load=True,
         )
 
-    sql.execute("DELETE FROM modules WHERE locked = 1")
+    sql.execute("DELETE FROM modules WHERE baked = 1")
 
     module_types = {name: controller for name, controller in manager.modules.type_controllers.items()
                     if name is not None}
@@ -468,67 +504,13 @@ def bootstrap_modules():
             if module_class is None:
                 print(f"Module class for {module_name} in {module_type} is None, skipping.")
                 continue
+            if module_name == 'config':
+                pass
             add_module(
                 module_class=module_class,
                 module_name=module_name,
                 folder_name=module_type,
             )
-
-    # baked_types = ['Managers', 'Providers', 'Widgets', 'Bubbles', 'Members', 'Behaviors']  #
-    # for baked_type in baked_types:
-    #     baked_type_modules = BAKED_MODULES[baked_type]
-    #     for module_name, module_class in baked_type_modules.items():
-    #         add_module(
-    #             module_class=module_class,
-    #             module_name=module_name,
-    #             folder_name=baked_type,
-    #         )
-    # # manager.load()
-
-    # # baked_bubbles = BAKED_MODULES['Bubbles']
-    # # for bubble_class in baked_bubbles:
-    # #     add_module(
-    # #         module_class=bubble_class,
-    # #         module_name=bubble_class.__name__,
-    # #         extra_imports="from gui.bubbles import MessageBubble, MessageButton\n",
-    # #         folder_name='Bubbles',
-    # #         # bake_mode='FILE',
-    # #     )
-    # # baked_providers = BAKED_MODULES['Providers']  # todo fix plural inconsistency
-    # # for provider_name, provider_class in baked_providers.items():
-    # #     add_module(
-    # #         module_class=provider_class,
-    # #         module_name=provider_name,
-    # #         folder_name='Providers',
-    # #         # bake_mode='FILE',
-    # #     )
-    # # baked_managers = BAKED_MODULES['Managers']
-    # # for manager_name, manager_class in baked_managers.items():
-    # #     add_module(
-    # #         module_class=manager_class,
-    # #         module_name=manager_name,
-    # #         folder_name='Managers',
-    # #         # bake_mode='FILE',
-    # #     )
-    # # baked_members = BAKED_MODULES['Members']
-    # # for member_name, member_class in baked_members.items():
-    # #     add_module(
-    # #         module_class=member_class,
-    # #         module_name=member_name,
-    # #         folder_name='Members',
-    # #         # bake_mode='CLASS',
-    # #     )
-    # # baked_widgets = BAKED_MODULES['Widgets']  # todo fix plural inconsistency
-    # # for widget_name, widget_class in baked_widgets.items():
-    # #     if widget_name.startswith('Config'):  # skip config widgets todo
-    # #         continue
-    # #     add_module(
-    # #         module_class=widget_class,
-    # #         module_name=widget_name,
-    # #         folder_name='Widgets',
-    # #         # bake_mode='FILE',  # from gui.bubbles import MessageBubble, MessageButton\n\n\n"
-    # #     )
-    # # manager.load()
 
 
 def reset_table(table_name, item_configs=None, folder_type=None, folder_items=None, delete_existing=True):

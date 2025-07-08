@@ -1,3 +1,13 @@
+"""
+Base combo box field widget for configurable dropdown selections.
+
+This module provides a BaseCombo field widget that extends QComboBox to create
+flexible dropdown selections with database integration. It supports static items,
+dynamic database queries, and the ability to create new items. The widget can
+handle both simple text items and key-value pairs, and integrates with the
+configuration system.
+"""  # unchecked
+
 from PySide6.QtGui import QStandardItem, QColor, Qt
 from PySide6.QtWidgets import QComboBox, QInputDialog
 from utils import sql

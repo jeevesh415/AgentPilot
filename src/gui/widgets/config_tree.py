@@ -1,3 +1,22 @@
+"""Configuration Tree Widget Module.
+
+This module provides the ConfigTree widget, a base class for tree-based configuration
+widgets in Agent Pilot. It combines tree navigation with configuration management,
+providing a foundation for tree-based organization and editing.
+
+Key Features:
+- Abstract base class for tree-based configuration widgets
+- Extensible design for specialized tree implementations
+- Dual-panel interface with tree navigation and configuration widget
+- Filtering and search capabilities for tree items
+- Tree button controls for common operations
+- Integration with the configuration system
+
+The ConfigTree serves as the foundation for various specialized tree widgets
+throughout Agent Pilot, providing consistent behavior and appearance for
+tree widgets.
+"""
+
 import json
 from abc import abstractmethod
 from PySide6.QtGui import Qt

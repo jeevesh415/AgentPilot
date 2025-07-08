@@ -1,0 +1,201 @@
+{
+    "uuid": "c21cd164-dac6-4c7b-b1a7-76130c5e724f",
+    "name": "Master Test",
+    "config": {
+        "_TYPE": "workflow",
+        "name": "Master Test",
+        "avatar_path": null,
+        "description": "",
+        "members": [
+            {
+                "id": "1",
+                "linked_id": null,
+                "loc_x": 20,
+                "loc_y": 64,
+                "width": 450.0,
+                "height": 350.0,
+                "config": {
+                    "_TYPE": "user"
+                }
+            },
+            {
+                "id": "2",
+                "linked_id": null,
+                "loc_x": 98,
+                "loc_y": 97,
+                "width": 450.0,
+                "height": 377.0,
+                "config": {
+                    "chat.model": {
+                        "kind": "CHAT",
+                        "model_name": "claude-3-5-sonnet-20240620",
+                        "provider": "litellm",
+                        "model_params": {
+                            "structure.data": [],
+                            "xml_roles.data": []
+                        }
+                    },
+                    "chat.display_markdown": true,
+                    "chat.sys_msg": "The user will give you a color",
+                    "chat.preload.data": [],
+                    "tool": null,
+                    "id": null,
+                    "_TYPE": "agent"
+                }
+            },
+            {
+                "id": "3",
+                "linked_id": null,
+                "loc_x": 244,
+                "loc_y": 92,
+                "width": 450,
+                "height": 377.0,
+                "config": {
+                    "_TYPE": "agent"
+                }
+            },
+            {
+                "id": "4",
+                "linked_id": null,
+                "loc_x": 166,
+                "loc_y": 62,
+                "width": 450,
+                "height": 350,
+                "config": {
+                    "_TYPE": "user"
+                }
+            },
+            {
+                "id": "8",
+                "linked_id": null,
+                "loc_x": 317,
+                "loc_y": 139,
+                "width": 1280.0,
+                "height": 800.0,
+                "config": {
+                    "_TYPE": "workflow",
+                    "name": "Workflow",
+                    "avatar_path": null,
+                    "description": "",
+                    "members": [
+                        {
+                            "id": "1",
+                            "linked_id": null,
+                            "loc_x": 175,
+                            "loc_y": 88,
+                            "width": 450,
+                            "height": 377.0,
+                            "config": {
+                                "_TYPE": "agent"
+                            }
+                        },
+                        {
+                            "id": "2",
+                            "linked_id": null,
+                            "loc_x": 29,
+                            "loc_y": 93,
+                            "width": 450,
+                            "height": 377.0,
+                            "config": {
+                                "chat.model": {
+                                    "kind": "CHAT",
+                                    "model_name": "claude-3-5-sonnet-20240620",
+                                    "provider": "litellm",
+                                    "model_params": {
+                                        "structure.data": [],
+                                        "xml_roles.data": []
+                                    }
+                                },
+                                "chat.display_markdown": true,
+                                "chat.sys_msg": "The user will give you a color",
+                                "chat.preload.data": [],
+                                "tool": null,
+                                "id": null,
+                                "_TYPE": "agent"
+                            }
+                        },
+                        {
+                            "id": "3",
+                            "linked_id": null,
+                            "loc_x": 96,
+                            "loc_y": 57,
+                            "width": 450,
+                            "height": 350,
+                            "config": {
+                                "_TYPE": "user"
+                            }
+                        }
+                    ],
+                    "inputs": [
+                        {
+                            "source_member_id": "3",
+                            "target_member_id": "1",
+                            "config": {
+                                "looper": false,
+                                "mappings.data": [
+                                    {
+                                        "source": "Output",
+                                        "target": "Message"
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                    "options": {
+                        "autorun": true,
+                        "show_hidden_bubbles": false,
+                        "show_nested_bubbles": false
+                    },
+                    "params": []
+                }
+            }
+        ],
+        "inputs": [
+            {
+                "source_member_id": "1",
+                "target_member_id": "2",
+                "config": {
+                    "looper": false,
+                    "mappings.data": [
+                        {
+                            "source": "Output",
+                            "target": "Message"
+                        }
+                    ]
+                }
+            },
+            {
+                "source_member_id": "2",
+                "target_member_id": "4",
+                "config": {
+                    "looper": false,
+                    "mappings.data": [
+                        {
+                            "source": "Output",
+                            "target": "Message"
+                        }
+                    ]
+                }
+            },
+            {
+                "source_member_id": "4",
+                "target_member_id": "3",
+                "config": {
+                    "looper": false,
+                    "mappings.data": [
+                        {
+                            "source": "Output",
+                            "target": "Message"
+                        }
+                    ]
+                }
+            }
+        ],
+        "options": {
+            "autorun": true,
+            "show_hidden_bubbles": false,
+            "show_nested_bubbles": false
+        },
+        "params": []
+    }
+}

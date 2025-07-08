@@ -1,3 +1,23 @@
+"""Roles Page Module.
+
+This module provides the user roles management page for the Agent Pilot GUI interface.
+Roles define access levels, permissions, and capabilities for different types of users
+interacting with the Agent Pilot system, enabling fine-grained access control and
+user management.
+
+Key Features:
+- Role creation, editing, and deletion
+- Permission and access level configuration
+- User assignment and role management
+- Hierarchical role structures
+- Integration with user authentication systems
+- Database-backed role persistence
+- Security and access control settings
+
+The page extends ConfigDBTree to provide comprehensive role management capabilities
+for administrators to control user access and system permissions.
+"""
+
 from gui.util import find_main_widget
 from gui.widgets.config_db_tree import ConfigDBTree
 from gui.widgets.config_fields import ConfigFields

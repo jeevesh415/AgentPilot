@@ -1,4 +1,25 @@
 
+"""Tools Page Module.
+
+This module provides the tools management page for the Agent Pilot GUI interface.
+Tools are executable functions that agents can invoke during conversations to
+perform specific tasks, from simple code execution to complex workflow orchestration.
+The page enables users to create, configure, and manage these powerful agent capabilities.
+
+Key Features:
+- Tool creation, editing, and deletion
+- Support for multiple tool types (code, workflow, function)
+- Parameter definition and schema management
+- Workflow configuration and settings management
+- Folder-based organization for tool categorization
+- Search and filtering capabilities
+- Integrated configuration widget for detailed tool setup
+- Testing and preview capabilities
+
+The page extends ConfigDBTree to provide database-backed tool management with
+a dual-panel interface showing the tool library and detailed configuration options.
+"""
+
 from gui.widgets.config_db_tree import ConfigDBTree
 from gui.widgets.workflow_settings import WorkflowSettings
 
@@ -62,6 +83,7 @@ class Page_Tool_Settings(ConfigDBTree):
             layout_type='horizontal',
             folder_key='tools',
             config_widget=self.ToolWorkflowSettings(parent=self),
+            folder_config_widget=self.Folder_Config_Widget(parent=self),
             tree_header_resizable=True,
             default_item_icon=':/resources/icon-tool-small.png',
         )

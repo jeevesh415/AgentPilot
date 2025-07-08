@@ -1,3 +1,33 @@
+"""Module Manager Module.
+
+This module provides the ModuleManager class for managing dynamic loading and unloading of
+modules within the Agent Pilot system. The module system enables runtime extension and
+customization of application functionality through pluggable components.
+
+Key Features:
+- Dynamic module loading and unloading at runtime
+- Multi-type module support (managers, pages, widgets, environments, providers, etc.)
+- Automatic module discovery and registration
+- Configuration hashing for change detection
+- Module type-based organization and folder mapping
+- Integration with the database for module persistence
+- Support for custom module development and deployment
+
+Module Types Supported:
+- Managers: System-level management components
+- Pages: GUI page components for the interface
+- Widgets: Reusable UI widget components
+- Environments: Execution environment providers
+- Providers: AI model and service providers
+- Members: Workflow member components
+- Bubbles: Chat message display components
+- Behaviors: Agent behavior definitions
+- Fields: Form field components
+
+The ModuleManager enables Agent Pilot's extensible architecture, allowing developers to
+create custom modules that integrate seamlessly with the core application.
+"""  # unchecked
+
 import importlib
 import inspect
 import json
@@ -9,7 +39,7 @@ from typing import Dict
 from typing_extensions import override
 
 from utils import sql
-from utils.helpers import set_module_type, ManagerController, convert_to_safe_case, get_metadata, \
+from utils.helpers import hash_config, set_module_type, ManagerController, convert_to_safe_case, get_metadata, \
     get_module_type_folder_id
 import types
 
@@ -21,7 +51,7 @@ class ModuleManager(ManagerController):
     def __init__(self, system):
         super().__init__(system, table_name="modules", store_data=False)
 
-        type_locations = {
+        self.type_locations = {
             None: 'src.system.modules',
             'managers': 'src.system',
             'pages': 'src.gui.pages',
@@ -38,7 +68,7 @@ class ModuleManager(ManagerController):
                 system=system,
                 module_type=module_type,
                 load_to_path=load_path
-            ) for module_type, load_path in type_locations.items()
+            ) for module_type, load_path in self.type_locations.items()
         }
         self.plugins = {}
 
@@ -109,9 +139,13 @@ class ModuleManager(ManagerController):
                 'data': textwrap.dedent(module_code),
             }
 
-        kwargs['metadata'] = json.dumps(get_metadata(config))
+        # kwargs['locked'] = 1
+        metadata = get_metadata(config)
+        extra_metadata = kwargs.pop('extra_metadata', None)
+        if extra_metadata:
+            metadata.update(extra_metadata)
+        kwargs['metadata'] = json.dumps(metadata)
         kwargs['folder_id'] = get_module_type_folder_id(module_type=folder_name) if folder_name else None
-        kwargs['locked'] = 1
 
         super().add(name, **kwargs)
 
@@ -162,7 +196,7 @@ class ModulesController(ManagerController):
             **kwargs
     ):
         kwargs['table_name'] = 'modules'
-        kwargs['load_columns'] = ['uuid', 'name', 'config', 'class', 'metadata', 'locked', 'folder_path']
+        kwargs['load_columns'] = ['uuid', 'name', 'config', 'class', 'metadata', 'hash', 'baked', 'folder_path']
         super().__init__(system, **kwargs)
         self.module_type = module_type
         self.load_to_path = load_to_path
@@ -189,15 +223,15 @@ class ModulesController(ManagerController):
                 m.name,
                 m.config,
                 m.metadata,
-                m.locked,
                 fp.path AS folder_path
             FROM modules m
             JOIN folder_path fp ON m.folder_id = fp.id
-	        -- WHERE m.locked = 1
+	        WHERE m.baked = 0
         """, (self.module_type,))
 
         for row in rows:
             module_name = row[1]
+
             module_path = self.get_module_path(module_name)
             self.load_db_module(module_path, row)
             # if locked == 1:
@@ -206,7 +240,7 @@ class ModulesController(ManagerController):
             #     self.load_db_module(module_path, row)
 
     def load_db_module(self, module_path, row):
-        uuid, module_name, config, metadata, locked, folder_path = row
+        uuid, module_name, config, metadata, folder_path = row
 
         try:
             # Remove old module if exists
@@ -227,7 +261,8 @@ class ModulesController(ManagerController):
 
             # Register the module
             cls = self.extract_module_class(module_name, default=None)
-            self[module_name] = (uuid, module_name, config, cls, metadata, locked, folder_path)
+            hash = metadata.get('hash')
+            self[module_name] = (uuid, module_name, config, cls, metadata, hash, 0, folder_path)
 
         except Exception as e:
             print(f"Error loading dynamic module {module_name}: {str(e)}")
@@ -238,18 +273,23 @@ class ModulesController(ManagerController):
         and storing them.
         """
         discovered_module_infos = self.discover_modules(self.load_to_path)
-
         for cls, module_path_str in discovered_module_infos:
             module_name = module_path_str.split('.')[-1]
+            module = sys.modules[module_path_str]
+            source_code = inspect.getsource(module)
+            config = {'data': source_code, "name": module_name}
+            metadata = get_metadata(config)
 
             if cls:  # Ensure a class was indeed found and extracted
                 self[module_name] = (
-                    None,  # UUID (not applicable for source modules)
+                    # None,  # UUID (not applicable for source modules)
+                    hash_config(config), # UUID
                     module_name,  # Simple name of the module
-                    {},  # Config (empty for source modules by default)
+                    config,  # Config
                     cls,  # The extracted class from the module
-                    {},  # Metadata (empty for source modules by default)
-                    1,  # Locked (source modules are typically considered locked)
+                    metadata,  # Metadata
+                    hash_config(config), # Hash
+                    1,  # Baked (source modules are baked)
                     '',  # Folder path (can be derived if needed, or left empty)
                 )
 
@@ -325,8 +365,9 @@ class ModulesController(ManagerController):
                     'config': module_item[2],
                     'class': module_item[3],  #self.extract_module_class(module_item[1], default=None),
                     'metadata': module_item[4],
-                    'locked': module_item[5],
-                    'folder_path': module_item[6]
+                    'hash': module_item[5],
+                    'baked': module_item[6],
+                    'folder_path': module_item[7]
                 }
 
             if module_item['class'] is None:

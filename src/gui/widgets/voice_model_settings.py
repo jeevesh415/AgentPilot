@@ -1,4 +1,27 @@
 
+"""
+Voice Model Settings Widget for Agent Pilot.
+
+This module provides a specialized configuration widget for managing voice synthesis model
+settings within the Agent Pilot application. It enables users to configure voice AI models,
+their parameters, and related settings for speech synthesis and voice generation.
+
+Key Features:
+• Model type selection through plugin-based dropdown interface
+• Voice model configuration for speech synthesis
+• Integration with the Agent Pilot plugin system for model discovery
+• Dynamic configuration fields based on selected voice provider
+• Support for multiple voice synthesis providers and models
+• Real-time configuration updates and validation
+• Seamless integration with the ConfigFields architecture
+• Flexible voice model parameter management
+
+The VoiceModelSettings widget extends ConfigFields to provide a specialized interface for
+configuring voice synthesis AI models. It serves as a crucial component in the Agent Pilot
+system for enabling speech synthesis capabilities, allowing users to select and configure
+appropriate voice models for their specific audio generation and text-to-speech needs.
+"""  # unchecked
+
 from gui.widgets.config_fields import ConfigFields
 
 
