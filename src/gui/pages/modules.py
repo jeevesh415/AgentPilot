@@ -16,7 +16,7 @@ Key Features:
 
 The page provides comprehensive module lifecycle management, enabling users to
 extend Agent Pilot's capabilities through custom and third-party modules.
-"""
+"""  # unchecked
 
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QLabel, QWidget, QSizePolicy, QMessageBox

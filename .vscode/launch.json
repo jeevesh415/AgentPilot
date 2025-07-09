@@ -7,9 +7,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/__main__.py",
             "console": "integratedTerminal",
-            "env": {
-                "AP_DEV_MODE": "1"
-            },
+            "envFile": "${workspaceFolder}/.env",
             "python": "${workspaceFolder}/.venv/bin/python",
             "cwd": "${workspaceFolder}"
         }

@@ -17,7 +17,7 @@ Key Features:
 
 The page extends ConfigDBTree to provide database-backed conversation management
 with intuitive organization and navigation capabilities.
-"""
+"""  # unchecked
 
 from gui.util import find_main_widget
 from gui.widgets.config_db_tree import ConfigDBTree

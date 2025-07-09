@@ -106,13 +106,20 @@ class ModuleManager(ManagerController):
             if folder_name == 'Pages':
                 module_code = f"""
                     from gui.util import CVBoxLayout, CHBoxLayout
-                    from gui.widgets import ConfigDBTree, ConfigFields, ConfigJoined, ConfigDBTree, ConfigJsonTree, ConfigPages, ConfigTabs
+                    from gui.widgets.config_db_tree import ConfigDBTree
+                    from gui.widgets.config_fields import ConfigFields
+                    from gui.widgets.config_joined import ConfigJoined
+                    from gui.widgets.config_json_tree import ConfigJsonTree
+                    from gui.widgets.config_pages import ConfigPages
+                    from gui.widgets.config_tabs import ConfigTabs
 
                     class Page_{safe_text}_Settings(ConfigPages):
+                        display_name = \"\"\"{name}\"\"\"
+                        page_type = 'main'
+                        icon_path = ':/resources/icon-tasks.png'
+
                         def __init__(self, parent):
                             super().__init__(parent=parent)
-                            # self.icon_path = ":/resources/icon-tasks.png"
-                            self.try_add_breadcrumb_widget(root_title=\"\"\"{name}\"\"\")
                             self.pages = {{}}
                 """
             elif folder_name == 'Bubbles':
@@ -144,6 +151,7 @@ class ModuleManager(ManagerController):
         extra_metadata = kwargs.pop('extra_metadata', None)
         if extra_metadata:
             metadata.update(extra_metadata)
+        kwargs['config'] = config
         kwargs['metadata'] = json.dumps(metadata)
         kwargs['folder_id'] = get_module_type_folder_id(module_type=folder_name) if folder_name else None
 
@@ -241,31 +249,36 @@ class ModulesController(ManagerController):
 
     def load_db_module(self, module_path, row):
         uuid, module_name, config, metadata, folder_path = row
+        metadata = json.loads(metadata)
 
+        # try:
+        # Remove old module if exists
+        if module_path in sys.modules:
+            del sys.modules[module_path]
+
+        ensure_parent_modules(module_path)
+        # Create and execute module
+        config = json.loads(config)
+        source_code = config.get('data', '')
+        loader = VirtualModuleLoader(source_code)
+        spec = importlib.util.spec_from_loader(module_path, loader)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_path] = module
         try:
-            # Remove old module if exists
-            if module_path in sys.modules:
-                del sys.modules[module_path]
-
-            ensure_parent_modules(module_path)
-            # Create and execute module
-            config = json.loads(config)
-            source_code = config.get('data', '')
-            loader = VirtualModuleLoader(source_code)
-            spec = importlib.util.spec_from_loader(module_path, loader)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_path] = module
             spec.loader.exec_module(module)
-            module.__package__ = '.'.join(module_path.split('.')[:-1])
-            # module.__name__ = module_path  # Ensure the module name is set correctly
-
-            # Register the module
-            cls = self.extract_module_class(module_name, default=None)
-            hash = metadata.get('hash')
-            self[module_name] = (uuid, module_name, config, cls, metadata, hash, 0, folder_path)
-
         except Exception as e:
-            print(f"Error loading dynamic module {module_name}: {str(e)}")
+            print(f"Error executing module {module_path}: {str(e)}")
+            return
+        module.__package__ = '.'.join(module_path.split('.')[:-1])
+        # module.__name__ = module_path  # Ensure the module name is set correctly
+
+        # Register the module
+        cls = self.extract_module_class(module_name, default=None)
+        hash = metadata.get('hash')
+        self[module_name] = (uuid, module_name, config, cls, metadata, hash, 0, folder_path)
+
+        # except Exception as e:
+        #     print(f"Error loading dynamic module {module_name}: {str(e)}")
 
     def load_source_modules(self):
         """

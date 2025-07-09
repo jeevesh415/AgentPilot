@@ -15,7 +15,7 @@ Key Features:
 
 The page extends ConfigDBTree to provide database-backed agent management with
 a dual-panel interface showing the agent list and detailed configuration options.
-"""
+"""  # unchecked
 
 from typing_extensions import override
 from gui.widgets.config_db_tree import ConfigDBTree

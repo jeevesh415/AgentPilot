@@ -48,7 +48,7 @@
                 "linked_id": null,
                 "loc_x": 244,
                 "loc_y": 92,
-                "width": 450,
+                "width": 450.0,
                 "height": 377.0,
                 "config": {
                     "_TYPE": "agent"
@@ -59,8 +59,8 @@
                 "linked_id": null,
                 "loc_x": 166,
                 "loc_y": 62,
-                "width": 450,
-                "height": 350,
+                "width": 450.0,
+                "height": 350.0,
                 "config": {
                     "_TYPE": "user"
                 }
@@ -83,7 +83,7 @@
                             "linked_id": null,
                             "loc_x": 175,
                             "loc_y": 88,
-                            "width": 450,
+                            "width": 450.0,
                             "height": 377.0,
                             "config": {
                                 "_TYPE": "agent"
@@ -94,7 +94,7 @@
                             "linked_id": null,
                             "loc_x": 29,
                             "loc_y": 93,
-                            "width": 450,
+                            "width": 450.0,
                             "height": 377.0,
                             "config": {
                                 "chat.model": {
@@ -119,8 +119,8 @@
                             "linked_id": null,
                             "loc_x": 96,
                             "loc_y": 57,
-                            "width": 450,
-                            "height": 350,
+                            "width": 450.0,
+                            "height": 350.0,
                             "config": {
                                 "_TYPE": "user"
                             }
@@ -188,6 +188,13 @@
                             "target": "Message"
                         }
                     ]
+                }
+            },
+            {
+                "source_member_id": "3",
+                "target_member_id": "8",
+                "config": {
+                    "looper": false
                 }
             }
         ],

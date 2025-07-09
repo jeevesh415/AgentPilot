@@ -17,7 +17,7 @@ Key Features:
 
 The page extends ConfigDBTree to provide database-backed model management with
 specialized configuration widgets for different model types and providers.
-"""
+"""  # unchecked
 
 from typing_extensions import override
 

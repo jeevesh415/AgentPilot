@@ -438,6 +438,10 @@ class WorkflowSettings(ConfigWidget):
         if not self.compact_mode:
             return
 
+        print(f"DEBUG: set_edit_mode called with state={state}")
+        print(f"DEBUG: self.parent={type(self.parent).__name__}")
+        print(f"DEBUG: self.parent.parent={type(self.parent.parent).__name__}")
+        
         self.view.temp_block_move_flag = True
 
         # deselect all members first, to avoid layout issue - only if multiple other members

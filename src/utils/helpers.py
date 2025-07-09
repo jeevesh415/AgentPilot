@@ -775,8 +775,8 @@ def get_metadata(config):
             elif isinstance(node, ast.ClassDef):
                 classes[node.name] = get_class_metadata(node)
 
-            else:
-                print(node.__class__)
+            # else:
+            #     print(node.__class__)
 
     except Exception as e:
         print(f"Error parsing code: {str(e)}")

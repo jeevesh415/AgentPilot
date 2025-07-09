@@ -21,6 +21,7 @@ from gui.style import get_stylesheet
 from gui.widgets.config_pages import ConfigPages
 from gui.util import IconButton, colorize_pixmap, TextEnhancerButton, ToggleIconButton, find_main_widget, \
     CVBoxLayout, CHBoxLayout
+# from plugins.calligrapher.src.main import test_calligrapher
 
 os.environ["QT_OPENGL"] = "software"
 
@@ -230,18 +231,18 @@ class MainPages(ConfigPages):
             if page_name in self.pages and page_name in [page[1] for page in page_definitions]:
                 new_pages[page_name] = self.pages[page_name]
         for module_id, module_name, page_class in page_definitions:
-            # try:
-            new_pages[module_name] = page_class(parent=self)
-            setattr(new_pages[module_name], 'module_id', module_id)
-            existing_page = self.pages.get(module_name, None)
-            if existing_page and getattr(existing_page, 'user_editing', False):
-                setattr(new_pages[module_name], 'user_editing', True)
+            try:
+                new_pages[module_name] = page_class(parent=self)
+                setattr(new_pages[module_name], 'module_id', module_id)
+                existing_page = self.pages.get(module_name, None)
+                if existing_page and getattr(existing_page, 'user_editing', False):
+                    setattr(new_pages[module_name], 'user_editing', True)
 
-            if hasattr(new_pages[module_name], 'add_breadcrumb_widget'):
-                new_pages[module_name].add_breadcrumb_widget()
+                if hasattr(new_pages[module_name], 'add_breadcrumb_widget'):
+                    new_pages[module_name].add_breadcrumb_widget()
 
-            # except Exception as e:
-            #     display_message(self, f"Error loading page '{module_name}':\n{e}", 'Error', QMessageBox.Warning)
+            except Exception as e:
+                display_message(self, f"Error loading page '{module_name}':\n{e}", 'Error', QMessageBox.Warning)
 
         for page_name in locked_below:
             if page_name in self.pages and page_name in [page[1] for page in page_definitions]:
@@ -254,22 +255,23 @@ class MainPages(ConfigPages):
         self.settings_sidebar.setFixedWidth(70)
 
     # def new_page_btn_clicked(self):
-    #     dlg_title, dlg_prompt = ('New page name', 'Enter a new name for the new page')
-    #     text, ok = QInputDialog.getText(self, dlg_title, dlg_prompt)
-    #     if not ok:
-    #         return
-    #
-    #     from system import manager
-    #     manager.modules.add(name=text, folder_name='Pages')
-    #
-    #     main = find_main_widget(self)
-    #     main.main_pages.build_schema()
-    #     # main.page_settings.build_schema()
-    #     main.main_pages.settings_sidebar.toggle_page_pin(text, True)
-    #     page_btn = main.main_pages.settings_sidebar.page_buttons.get(text, None)
-    #     if page_btn:
-    #         page_btn.click()
-    #         main.main_pages.edit_page(text)
+    def add_page(self):
+        dlg_title, dlg_prompt = ('New page name', 'Enter a new name for the new page')
+        text, ok = QInputDialog.getText(self, dlg_title, dlg_prompt)
+        if not ok:
+            return
+    
+        from system import manager
+        manager.modules.add(name=text, folder_name='Pages')
+    
+        main = find_main_widget(self)
+        main.main_pages.build_schema()
+        # main.page_settings.build_schema()
+        main.main_pages.settings_sidebar.toggle_page_pin(text, True)
+        page_btn = main.main_pages.settings_sidebar.page_buttons.get(text, None)
+        if page_btn:
+            page_btn.click()
+            main.main_pages.edit_page(text)
 
 
 class MessageButtonBar(QWidget):
@@ -661,6 +663,9 @@ class Main(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        # test_calligrapher()
+        # return
+
         # from utils.config import test_config
         # test_config()
         # return
@@ -785,6 +790,8 @@ class Main(QMainWindow):
         self.show_notification_signal.connect(self.notification_manager.show_notification, Qt.QueuedConnection)
 
         self.page_chat.workflow_settings.header_widget.hide()
+
+        self.main_pages.build_schema()
 
     @property
     def page_chat(self):

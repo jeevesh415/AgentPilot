@@ -16,7 +16,7 @@ Key Features:
 
 The page provides a centralized marketplace and management interface for
 extending Agent Pilot's functionality through community and third-party addons.
-"""
+"""  # unchecked
 
 import json
 import sys

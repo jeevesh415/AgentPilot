@@ -17,7 +17,7 @@ Key Features:
 
 The page extends ConfigDBTree to provide database-backed block management with
 a dual-panel interface showing the block library and detailed configuration options.
-"""
+"""  # unchecked
 
 from gui.widgets.config_db_tree import ConfigDBTree
 from gui.widgets.workflow_settings import WorkflowSettings

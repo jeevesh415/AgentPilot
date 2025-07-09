@@ -469,6 +469,7 @@ def bootstrap_modules():
     from system import manager
 
     def add_module(module_class, module_name, folder_name, bake_mode='FILE', extra_imports=''):
+        # module_file = module_class.__module__
         module_file_path = inspect.getfile(module_class)
 
         with open(module_file_path, 'r', encoding='utf-8') as file:
@@ -498,14 +499,17 @@ def bootstrap_modules():
     for module_type in module_types:
         module_type_modules = manager.modules.get_modules_in_folder(
             module_type=module_type,
-            fetch_keys=('name', 'class',)
+            fetch_keys=('name', 'class', 'baked',)
         )
-        for module_name, module_class in module_type_modules:
+        for module_name, module_class, baked in module_type_modules:
+            if baked == 0:
+                continue
             if module_class is None:
                 print(f"Module class for {module_name} in {module_type} is None, skipping.")
                 continue
             if module_name == 'config':
                 pass
+            # module = module_class.__module__
             add_module(
                 module_class=module_class,
                 module_name=module_name,
