@@ -37,8 +37,8 @@ class ConfigJsonTree(ConfigTree):
     def __init__(self, parent, **kwargs):
         super().__init__(parent=parent, **kwargs)
 
-        self.tree_buttons.btn_add.clicked.connect(self.add_item)
-        self.tree_buttons.btn_del.clicked.connect(self.delete_item)
+        # self.tree_buttons.btn_add.clicked.connect(self.add_item)  # !404!
+        # self.tree_buttons.btn_del.clicked.connect(self.delete_item)
 
     @override
     def load(self):
@@ -54,7 +54,6 @@ class ConfigJsonTree(ConfigTree):
                 parsed, row_data_json = try_parse_json(row_data_json)
                 if not parsed:
                     display_message(
-                        self,
                         message=f'Error parsing JSON data: {row_data_json}',
                         icon=QMessageBox.Warning,
                     )
@@ -114,7 +113,7 @@ class ConfigJsonTree(ConfigTree):
             row_item = self.tree.topLevelItem(i)
             item_config = {}
             for j in range(len(schema)):
-                key = convert_to_safe_case(schema[j].get('key', schema[j]['text']))
+                key = convert_to_safe_case(schema[j].get('key', schema[j]['text'].lower()))
                 # col_type = schema[j].get('type', str)
                 cell_widget = self.tree.itemWidget(row_item, j)
                 if (cell_widget and
@@ -158,7 +157,7 @@ class ConfigJsonTree(ConfigTree):
     def add_new_entry(self, row_dict, parent_item=None, icon=None):
         # from gui.util import RoleComboBox, InputSourceComboBox, InputTargetComboBox, BaseComboBox, colorize_pixmap
         with block_signals(self.tree):
-            col_values = [row_dict.get(convert_to_safe_case(col_schema.get('key', col_schema['text'])), None)
+            col_values = [row_dict.get(convert_to_safe_case(col_schema.get('key', col_schema['text'].lower())), None)
                           for col_schema in self.schema]
 
             parent_item = parent_item or self.tree
@@ -173,7 +172,7 @@ class ConfigJsonTree(ConfigTree):
             for i, col_schema in enumerate(self.schema):
                 column_type = col_schema.get('type', None)
                 default = col_schema.get('default', '')
-                key = convert_to_safe_case(col_schema.get('key', col_schema['text']))
+                key = convert_to_safe_case(col_schema.get('key', col_schema['text'].lower()))
                 val = row_dict.get(key, default)
                 # print('TODO 2: ADD FIELD')
 
@@ -270,7 +269,7 @@ class ConfigJsonTree(ConfigTree):
 
     def add_item(self, row_dict=None, icon=None):
         if row_dict is None:
-            row_dict = {convert_to_safe_case(col.get('key', col['text'])): col.get('default', '')
+            row_dict = {convert_to_safe_case(col.get('key', col['text'].lower())): col.get('default', '')
                         for col in self.schema}
         self.add_new_entry(row_dict, icon)
         self.update_config()
@@ -283,7 +282,7 @@ class ConfigJsonTree(ConfigTree):
 
         get_columns = ['content', 'description']
         col_indexs = [i for i, col in enumerate(self.schema)
-                         if convert_to_safe_case(col.get('key', col['text'])) in get_columns]
+                         if convert_to_safe_case(col.get('key', col['text'].lower())) in get_columns]
         show_warning = False
         for i in col_indexs:
             col_val = item.text(i)

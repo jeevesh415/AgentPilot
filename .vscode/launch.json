@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/src/__main__.py",
             "console": "integratedTerminal",
             "envFile": "${workspaceFolder}/.env",
-            "python": "${workspaceFolder}/.venv/bin/python",
+            "python": "/home/jb/.cache/pypoetry/virtualenvs/src-OMM8KacK-py3.11/bin/python",
             "cwd": "${workspaceFolder}"
         }
     ]

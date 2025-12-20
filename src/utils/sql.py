@@ -1,12 +1,7 @@
-import json
+
 import os.path
-import sqlite3
-import threading
 from contextlib import contextmanager
-
 from packaging import version
-
-sql_thread_lock = threading.Lock()
 
 DB_FILEPATH = None  # None will use default
 WRITE_TO_COPY = False
@@ -42,6 +37,7 @@ def set_db_filepath(path: str):
 
 def get_db_path():
     from utils.filesystem import get_application_path
+    global DB_FILEPATH
     # Check if we're running as a script or a frozen exe
     if DB_FILEPATH:
         return DB_FILEPATH
@@ -57,91 +53,26 @@ def get_db_path():
     return path
 
 
-def execute(query, params=None):
-    with sql_thread_lock:
-        db_path = get_db_path()
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-
-            cursor.close()
-            return cursor.lastrowid
+# POINT TO sqlite.py
+def execute(query, params=None, connector=None):
+    if connector is None:
+        from core.connectors.sqlite import SqliteConnector
+        connector = SqliteConnector(db_path=get_db_path())
+    return connector.execute(query, params)
 
 
-def get_results(query, params=None, return_type='rows', incl_column_names=False):
-    db_path = get_db_path()
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-
-        if isinstance(params, (list, tuple)):
-            param_list = [
-                p() if callable(p) else p
-                for p in params
-            ]
-            cursor.execute(query, param_list)
-        elif isinstance(params, dict):
-            param_dict = {
-                k: v() if callable(v) else v
-                for k, v in params.items()
-            }
-            cursor.execute(query, param_dict)
-        else:
-            cursor.execute(query)
-
-        rows = cursor.fetchall()
-        cursor.close()
-
-    col_names = [description[0] for description in cursor.description]
-
-    # Return the rows
-    if return_type == 'list':
-        ret_val = [row[0] for row in rows]
-    elif return_type == 'dict':
-        ret_val = {row[0]: row[1] for row in rows}
-    elif return_type == 'hdict':
-        # use col names as keys and first row as values
-        if len(rows) == 0:
-            return None
-        ret_val = {col_names[i]: rows[0][i] for i in range(len(col_names))}
-    elif return_type == 'tuple':
-        if len(rows) == 0:
-            return None
-        ret_val = rows[0]
-    else:
-        ret_val = rows
-
-    if incl_column_names:
-        return ret_val, col_names
-    else:
-        return ret_val
+def get_results(query, params=None, return_type='rows', incl_column_names=False, connector=None):
+    if connector is None:
+        from core.connectors.sqlite import SqliteConnector
+        connector = SqliteConnector(db_path=get_db_path())
+    return connector.get_results(query, params, return_type, incl_column_names)
 
 
-def get_scalar(query, params=None, return_type='single', load_json=False):
-    db_path = get_db_path()
-    with sqlite3.connect(db_path) as conn:
-        cursor = conn.cursor()
-
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-
-        row = cursor.fetchone()
-        cursor.close()
-
-        if row is None:
-            return None
-
-        if return_type == 'single':
-            return row[0] if not load_json else json.loads(row[0])
-        elif return_type == 'tuple':
-            return row
-        else:
-            raise Exception(f"Unknown return type: {return_type}")
+def get_scalar(query, params=None, return_type='single', load_json=False, connector=None):
+    if connector is None:
+        from core.connectors.sqlite import SqliteConnector
+        connector = SqliteConnector(db_path=get_db_path())
+    return connector.get_scalar(query, params, return_type, load_json)
 
 
 def check_database_upgrade():
@@ -162,54 +93,11 @@ def check_database_upgrade():
         return None
 
 
-def execute_multiple(queries, params_list):
-    with sql_thread_lock:
-        db_path = get_db_path()
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-
-            try:
-                for query, params in zip(queries, params_list):
-                    cursor.execute(query, params)
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                raise
-            finally:
-                cursor.close()
-
-
-def define_table(table_name, relations=None):
-    from utils.helpers import convert_to_safe_case
-    if not table_name:
-        return
-    exists = get_scalar(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
-    if exists:
-        return
-    sep = ',\n'
-    create_schema = f"""
-        CREATE TABLE IF NOT EXISTS "{convert_to_safe_case(table_name)}" (
-                "id"	INTEGER,
-                "uuid"	TEXT DEFAULT (
-                    lower(hex(randomblob(4))) || '-' ||
-                    lower(hex(randomblob(2))) || '-' ||
-                    '4' || substr(lower(hex(randomblob(2))), 2) || '-' ||
-                    substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' ||
-                    lower(hex(randomblob(6)))
-                ) UNIQUE,
-                {sep.join([f'"{rel}" INTEGER,' for rel in relations]) if relations else ''}
-                "name"	TEXT NOT NULL DEFAULT '',
-                "kind"	TEXT NOT NULL DEFAULT '',
-                "config"	TEXT NOT NULL DEFAULT '{{}}',
-                "metadata"	TEXT NOT NULL DEFAULT '{{}}',
-                "folder_id"	INTEGER DEFAULT NULL,
-                "pinned"	INTEGER DEFAULT 0,
-                "baked"	INTEGER DEFAULT 0,
-                "ordr"	INTEGER DEFAULT 0,
-                PRIMARY KEY("id" AUTOINCREMENT)
-        )
-    """
-    execute(create_schema)
+def define_table(table_name, relations=None, connector=None):
+    if connector is None:
+        from core.connectors.sqlite import SqliteConnector
+        connector = SqliteConnector(db_path=get_db_path())
+    return connector.define_table(table_name, relations)
 
 
 def ensure_column_in_tables(tables, column_name, column_type, default_value=None, not_null=False, unique=False, force_tables=None):

@@ -1,27 +1,27 @@
 from PySide6.QtGui import QColor
 
+from gui import system
 from utils.helpers import apply_alpha_to_hex
 
-PRIMARY_COLOR = '#151515'
-SECONDARY_COLOR = '#323232'
-TEXT_COLOR = '#c4c4c4'
-PARAM_COLOR = '#c4c4c4'
-STRUCTURE_COLOR = '#c4c4c4'
+PRIMARY_COLOR = '#ff1b1a1b'
+SECONDARY_COLOR = '#ff292629'
+TEXT_COLOR = '#ffcacdd5'
+ACCENT_COLOR_1 = '#ff438bb9'
+ACCENT_COLOR_2 = '#ff6aab73'
 
 
 def get_stylesheet():
-    global PRIMARY_COLOR, SECONDARY_COLOR, TEXT_COLOR, PARAM_COLOR, STRUCTURE_COLOR
-    from system import manager
+    global PRIMARY_COLOR, SECONDARY_COLOR, TEXT_COLOR, ACCENT_COLOR_1, ACCENT_COLOR_2
     # system = main.system
 
-    system_config = manager.config  # system.config.dict if system else {}
+    system_config = system.manager.config  # system.config.dict if system else {}
 
-    PRIMARY_COLOR = system_config.get('display.primary_color', '#ff11121b')
-    SECONDARY_COLOR = system_config.get('display.secondary_color', '#ff222332')
-    TEXT_COLOR = system_config.get('display.text_color', '#c4c4c4')
+    PRIMARY_COLOR = system_config.get('display.primary_color', '#ff1b1a1b')
+    SECONDARY_COLOR = system_config.get('display.secondary_color', '#ff292629')
+    TEXT_COLOR = system_config.get('display.text_color', '#ffc4c4c4')
     TEXT_SIZE = system_config.get('display.text_size', 12)
-    PARAM_COLOR = system_config.get('display.parameter_color', '#c4c4c4')
-    STRUCTURE_COLOR = system_config.get('display.structure_color', '#c4c4c4')
+    ACCENT_COLOR_1 = system_config.get('display.accent_color_1', '#ff438bb9')
+    ACCENT_COLOR_2 = system_config.get('display.accent_color_2', '#ff6aab73')
 
     # Protect against similar text and background colors by checking RGB distance
     primary = QColor(PRIMARY_COLOR)
@@ -35,8 +35,11 @@ def get_stylesheet():
 
     if color_distance < 20:  # Threshold for color similarity
         TEXT_COLOR = '#ffffff' if primary.lightness() < 128 else '#000000'
+    
+    LIGHT_TEXT_COLOR = apply_alpha_to_hex(TEXT_COLOR, 0.2)
+    SUPER_LIGHT_TEXT_COLOR = apply_alpha_to_hex(TEXT_COLOR, 0.08)
 
-    is_dev_mode = manager.config.get('system.dev_mode', False)
+    is_dev_mode = False  # system.manager.config.get('system.dev_mode', False)
 
     # {'''border: 1px solid red;''' if is_dev_mode else ''}
     # {'border: 1px solid red;' if is_dev_mode else ''}   border: 1px solid red;
@@ -57,19 +60,23 @@ def get_stylesheet():
     return f"""
 QWidget {{
     background-color: {PRIMARY_COLOR};
-    border-radius: 10px;
+    border-radius: 5px;
+    {'''border: 1px solid red;''' if is_dev_mode else ''}
+}}
+QWidget[class="track-control"] {{
+    border-top: 1px solid {apply_alpha_to_hex(TEXT_COLOR, 0.3)};
 }}
 QWidget.central {{
-    border-radius: 14px;
     border-top-left-radius: 30px;
+    border-bottom-left-radius: 10px;
     border-bottom-right-radius: 0px;
 }}
 QWidget.edit-bar {{
     background-color: {SECONDARY_COLOR};
     /* border-radius: 4px; */
 }}
-QWidget.window {{
-    border-radius: 10px;
+QCheckBox {{
+    color: {TEXT_COLOR};
 }}
 QCheckBox::indicator:unchecked {{
     border: 1px solid #2b2b2b;
@@ -131,14 +138,18 @@ QMenu {{
 }}
 QMenu::item {{
     color: {TEXT_COLOR};
-    padding: 2px 20px 2px 20px;
+    padding: 2px 10px 2px 10px;
     border: 1px solid transparent;
-    spacing: 20px;
+    spacing: 10px;
 }}
 QMenu::item:selected {{
     color: {TEXT_COLOR};
     border-color: {PRIMARY_COLOR};
     background: {SECONDARY_COLOR};
+}}
+QMenu::item:disabled {{
+    color: {apply_alpha_to_hex(TEXT_COLOR, 0.5)};
+    padding-left: 10px;
 }}
 QMenu::separator {{
      height: 2px;
@@ -214,6 +225,49 @@ QTabWidget::pane {{
     border: 0px;
     top: -1px;
 }}
+QToolBar {{
+    spacing: 0px;
+    border: none;
+}}
+QToolButton {{
+    background-color: transparent;
+    border: none;
+    border-radius: 3px;
+    padding: 4px;
+    margin: 0px;
+    color: {TEXT_COLOR};
+}}
+QToolButton:hover {{
+    background-color: {apply_alpha_to_hex(TEXT_COLOR, 0.05)};
+}}
+QToolButton:pressed {{
+    background-color: {apply_alpha_to_hex(TEXT_COLOR, 0.1)};
+}}
+QToolButton:checked {{
+    background-color: {apply_alpha_to_hex(TEXT_COLOR, 0.05)};
+}}
+QToolButton:checked:hover {{
+    background-color: {apply_alpha_to_hex(TEXT_COLOR, 0.1)};
+}}
+QMenuBar {{
+    spacing: 0px;
+    border: none;
+}}
+QMenuBar::item {{
+    color: {TEXT_COLOR};
+    padding: 2px 20px 2px 20px;
+    border: 1px solid transparent;
+    spacing: 20px;
+}}
+QMenuBar::item:selected {{
+    color: {TEXT_COLOR};
+    border-color: {PRIMARY_COLOR};
+    background: {SECONDARY_COLOR};
+}}
+QMenuBar::separator {{
+     height: 2px;
+     margin: 2px 5px 2px 4px;
+}}
 QPlainTextEdit {{
     background-color: {SECONDARY_COLOR};
     font-size: {TEXT_SIZE}px;
@@ -242,6 +296,9 @@ QTextEdit.msgbox {{
 QTreeWidget::item {{
     height: 25px;
 }}
+QTreeWidget::item:selected {{
+    background-color: {apply_alpha_to_hex(TEXT_COLOR, 0.2)};
+}}
 QTreeWidget#input_items::item {{
     height: 50px;
 }}
@@ -249,5 +306,28 @@ QHeaderView::section {{
     background-color: {PRIMARY_COLOR};
     color: {TEXT_COLOR};
     border: 0px;
+}}
+QTableView {{
+    gridline-color: #3a3a3a;
+    background-color: transparent;
+    alternate-background-color: transparent;
+    selection-background-color: {LIGHT_TEXT_COLOR};
+    color: {TEXT_COLOR};
+}}
+QTableView::item {{
+    padding: 4px;
+    border: none;
+}}
+QTableView::item:selected {{
+    background-color: {LIGHT_TEXT_COLOR};
+}}
+QTreeView, QListView, QTableView {{
+    color: {TEXT_COLOR};
+}}
+QSplitter::handle:vertical {{
+    border-top: 1px solid {LIGHT_TEXT_COLOR};   /* exact 1px line */
+}}
+QSplitter::handle:horizontal {{
+    border-left: 1px solid {LIGHT_TEXT_COLOR};   /* exact 1px line */
 }}
 """

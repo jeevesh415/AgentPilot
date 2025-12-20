@@ -1,36 +1,79 @@
 
+import asyncio
+from datetime import datetime
 import json
 import os
+from pathlib import Path
 import sys
 import uuid
 
-import nest_asyncio
+import PySide6
+import qasync
 from PySide6.QtWidgets import *
-from PySide6.QtCore import Signal, QSize, QTimer, QThreadPool, QPropertyAnimation, QEasingCurve, QObject, QDateTime
-from PySide6.QtGui import QPixmap, QIcon, QFont, QTextCursor, QTextDocument, QGuiApplication, Qt
+from PySide6.QtCore import Signal, QTimer, QThreadPool, QPropertyAnimation, QEasingCurve, QObject
+from PySide6.QtGui import QIcon, QTextDocument, Qt
 from typing_extensions import override
 
-from utils.filesystem import get_application_path
-from utils.sql import ensure_column_in_tables
+# from core.connectors.h5 import append_h5_dataset, create_h5_dataset, tea_kinds
+from src.core.connectors.h5 import DATA_DIR, PriceFile
+from src.core.connectors.mysql import MysqlConnector
+from src.core.connectors.sqlite import SqliteConnector
+from src.utils import sql
+from src.utils.sql import define_table, get_db_path
 from utils.sql_upgrade import upgrade_script
-from utils import sql, telemetry
-from system import manager
-
-from utils.helpers import display_message_box, apply_alpha_to_hex, get_avatar_paths_from_config, display_message
-from gui.style import get_stylesheet
+from utils import telemetry  # , sql
+from utils.helpers import display_message_box, flatten_list, get_avatar_paths_from_config, display_message
+from gui.style import ACCENT_COLOR_1, get_stylesheet
 from gui.widgets.config_pages import ConfigPages
-from gui.util import IconButton, colorize_pixmap, TextEnhancerButton, ToggleIconButton, find_main_widget, \
-    CVBoxLayout, CHBoxLayout
+from gui.util import CustomMenu, IconButton, clear_layout, find_main_widget, CVBoxLayout, safe_single_shot, set_selected_pages
 # from plugins.calligrapher.src.main import test_calligrapher
 
-os.environ["QT_OPENGL"] = "software"
+from gui import system
 
-nest_asyncio.apply()
+os.environ["QT_OPENGL"] = "software"
 
 BOTTOM_CORNER_X = 400
 BOTTOM_CORNER_Y = 450
 
 PIN_MODE = True
+
+
+class SystemManager:
+    def __init__(self):
+        self._main_gui = None
+
+        from core.managers.modules import ModuleManager
+        self.modules = ModuleManager(system=self)
+        # Managers will be populated here
+        # self.apis = APIManager
+        # self.agents = AgentManager
+        # ....
+    
+    def reload_managers(self):
+        self.modules.load()
+        custom_managers = self.modules.get_modules_in_folder(
+            module_type='Managers',
+            fetch_keys=('name', 'class',)
+        )
+        for name, mgr in custom_managers:
+            if name in self.__dict__:
+                continue
+            if mgr:
+                setattr(self, name, mgr(self))
+
+    def load(self):
+        self.reload_managers()
+
+        for name, mgr in self.__dict__.items():
+            if name.startswith('_'):
+                continue
+            print(f'Loading manager: {name}')
+            mgr.load()
+
+    def load_manager(self, manager_name):
+        mgr = getattr(self, manager_name, None)
+        if mgr:
+            mgr.load()
 
 
 # class TutorialHighlightWidget(QWidget):
@@ -140,28 +183,28 @@ In no event shall Agent Pilot or it's creators be liable to you or anyone else f
         layout.addLayout(h_layout)
 
 
-class TitleButtonBar(QWidget):
+class TitleButtonBar(CustomMenu):
     def __init__(self, parent):
         super().__init__(parent=parent)
-        self.parent = parent
-        self.main = parent
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setFixedHeight(20)
-
-        self.btn_minimise = IconButton(parent=self, icon_path=":/resources/icon-minimize.png", size=20, opacity=0.9, icon_size_percent=0.5)
-        self.btn_maximize = IconButton(parent=self, icon_path=":/resources/icon-maximize.png", size=20, opacity=0.9, icon_size_percent=0.5)
-        self.btn_close = IconButton(parent=self, icon_path=":/resources/close.png", size=20, opacity=0.9, icon_size_percent=0.5)
-        self.btn_minimise.clicked.connect(self.minimizeApp)
-        self.btn_maximize.clicked.connect(self.maximizeApp)
-        self.btn_close.clicked.connect(self.closeApp)
-
-        self.layout = CHBoxLayout(self)
-        self.layout.addStretch(1)
-        self.layout.addWidget(self.btn_minimise)
-        self.layout.addWidget(self.btn_maximize)
-        self.layout.addWidget(self.btn_close)
-
-        self.setMouseTracking(True)
+        self.icon_size = 12
+        self.schema = [
+            {
+                'text': 'Minimize',
+                'icon_path': ':/resources/icon-minimize.png',
+                'target': self.minimizeApp,
+            },
+            {
+                'text': 'Maximize',
+                'icon_path': ':/resources/icon-maximize.png',
+                'target': self.maximizeApp,
+            },
+            {
+                'text': 'Close',
+                'icon_path': ':/resources/close.png',
+                'target': self.closeApp,
+            },
+        ]
+        self.create_toolbar()
 
     def minimizeApp(self):
         self.window().showMinimized()
@@ -176,10 +219,102 @@ class TitleButtonBar(QWidget):
         self.window().close()
 
 
+#     # def toggleNotifications(self):
+#     #     pass
+#     #     # self.main.notification_manager.setVisible(self.notif_button.isChecked())
+
+#     # class NotificationIconButton(ToggleIconButton):
+#     #     """Toggle button with a notification number bubble"""
+#     #     def __init__(self, **kwargs):
+#     #         super().__init__(**kwargs)
+#     #         self.setFixedSize(20, 20)
+#     #         self.bubble_number = 67697
+
+#     #     def set_bubble_number(self, n):
+#     #         """Set the number to display in the notification bubble"""
+#     #         self.bubble_number = n
+#     #         self.update()  # Trigger a repaint
+
+#     #     def paintEvent(self, event):
+#     #         """Override paint event to draw the bubble"""
+#     #         super().paintEvent(event)
+
+#     #         if self.bubble_number > 0:
+#     #             painter = QPainter()
+#     #             if not painter.begin(self):
+#     #                 return
+
+#     #             try:
+#     #                 painter.setRenderHint(QPainter.Antialiasing)
+
+#     #                 # Define bubble size and position
+#     #                 bubble_size = 20
+#     #                 bubble_x = self.width() - bubble_size - 2
+#     #                 bubble_y = 2
+
+#     #                 # Draw the red circle
+
+#     #                 painter.setBrush(QColor(ACCENT_COLOR_1))  # Red color
+#     #                 painter.setPen(Qt.NoPen)
+#     #                 painter.drawEllipse(bubble_x, bubble_y, bubble_size, bubble_size)
+
+#     #                 # Draw the number text
+#     #                 painter.setPen(Qt.white)
+#     #                 font = QFont()
+#     #                 font.setPointSize(8)
+#     #                 font.setBold(True)
+#     #                 painter.setFont(font)
+
+#     #                 # Format the number (show 99+ for numbers > 99)
+#     #                 text = str(self.bubble_number) if self.bubble_number <= 99 else "99+"
+
+#     #                 # Draw text centered in the bubble
+#     #                 text_rect = PySide6.QtCore.QRect(bubble_x, bubble_y, bubble_size, bubble_size)
+#     #                 painter.drawText(text_rect, Qt.AlignCenter, text)
+#     #             finally:
+#     #                 painter.end()
+
+    #     # def paintEvent(self, event):
+    #     #     """Override paint event to draw the bubble"""
+    #     #     super().paintEvent(event)
+
+    #     #     if self.bubble_number > 0:
+    #     #         painter = QPainter(self)
+    #     #         painter.setRenderHint(QPainter.Antialiasing)
+
+    #     #         # Define bubble size and position
+    #     #         bubble_size = 20
+    #     #         bubble_x = self.width() - bubble_size - 2
+    #     #         bubble_y = 2
+
+    #     #         # Draw the red circle
+                
+    #     #         painter.setBrush(QColor(ACCENT_COLOR_1))  # Red color
+    #     #         painter.setPen(Qt.NoPen)
+    #     #         painter.drawEllipse(bubble_x, bubble_y, bubble_size, bubble_size)
+
+    #     #         # Draw the number text
+    #     #         painter.setPen(Qt.white)
+    #     #         font = QFont()
+    #     #         font.setPointSize(8)
+    #     #         font.setBold(True)
+    #     #         painter.setFont(font)
+
+    #     #         # Format the number (show 99+ for numbers > 99)
+    #     #         text = str(self.bubble_number) if self.bubble_number <= 99 else "99+"
+
+    #     #         # Draw text centered in the bubble
+    #     #         text_rect = PySide6.QtCore.QRect(bubble_x, bubble_y, bubble_size, bubble_size)
+    #     #         painter.drawText(text_rect, Qt.AlignCenter, text)
+
+    #     #         painter.end()
+
+
 class MainPages(ConfigPages):
     def __init__(self, parent):
         super().__init__(
             parent=parent,
+            default_page='chat',
             right_to_left=True,
             bottom_to_top=True,
             button_kwargs=dict(
@@ -193,22 +328,14 @@ class MainPages(ConfigPages):
 
         self.build_schema()
 
-        default_page = self.pages.get('chat')
-        page_btn = self.settings_sidebar.page_buttons.get('chat')
-        page = self.pages.get(default_page)
-        if page_btn:
-            page_btn.setChecked(True)
-        if page:
-            self.content.setCurrentWidget(page)
-
     @override
     def build_schema(self):
+        from utils import sql
         pinned_pages: list = sql.get_scalar(
             "SELECT `value` FROM settings WHERE `field` = 'pinned_pages';",
             load_json=True
         )
-        from system import manager
-        page_definitions = manager.modules.get_modules_in_folder(
+        page_definitions = system.manager.modules.get_modules_in_folder(
             module_type='Pages',
             fetch_keys=('uuid', 'name', 'class',),
         )
@@ -218,13 +345,16 @@ class MainPages(ConfigPages):
             if getattr(page_class, 'page_type', 'any') == 'main'
             or (getattr(page_class, 'page_type', 'any') == 'any' and module_name in pinned_pages)
         ]
-        preferred_order = ['chat', 'contexts', 'agents', 'blocks', 'tools', 'modules', 'settings']
+        preferred_order = ['chat', 'contexts', 'agents', 'blocks', 'tools', 'modules']
         locked_below = ['settings']
         locked_above = ['chat', 'contexts', 'agents', 'blocks', 'tools', 'modules']
         order_column = 1
         if preferred_order:
             order_idx = {name: i for i, name in enumerate(preferred_order)}
             page_definitions.sort(key=lambda x: order_idx.get(x[order_column], len(preferred_order)))
+        
+        # sort so locked_below are at the bottom
+        page_definitions.sort(key=lambda x: x[1] in locked_below)
 
         new_pages = {}
         for page_name in locked_above:
@@ -232,17 +362,20 @@ class MainPages(ConfigPages):
                 new_pages[page_name] = self.pages[page_name]
         for module_id, module_name, page_class in page_definitions:
             try:
-                new_pages[module_name] = page_class(parent=self)
-                setattr(new_pages[module_name], 'module_id', module_id)
+                # new_pages[module_name] = page_class(parent=self)
+                page = page_class(parent=self)
+                setattr(page, 'module_id', module_id)
                 existing_page = self.pages.get(module_name, None)
                 if existing_page and getattr(existing_page, 'user_editing', False):
-                    setattr(new_pages[module_name], 'user_editing', True)
+                    setattr(page, 'user_editing', True)
 
-                if hasattr(new_pages[module_name], 'add_breadcrumb_widget'):
-                    new_pages[module_name].add_breadcrumb_widget()
+                if hasattr(page, 'add_breadcrumb_widget') and getattr(page, 'show_breadcrumbs', True):
+                    page.add_breadcrumb_widget()
+
+                new_pages[module_name] = page
 
             except Exception as e:
-                display_message(self, f"Error loading page '{module_name}':\n{e}", 'Error', QMessageBox.Warning)
+                display_message(f"Error loading page '{module_name}': {e}", 'Error', QMessageBox.Warning)
 
         for page_name in locked_below:
             if page_name in self.pages and page_name in [page[1] for page in page_definitions]:
@@ -254,15 +387,13 @@ class MainPages(ConfigPages):
 
         self.settings_sidebar.setFixedWidth(70)
 
-    # def new_page_btn_clicked(self):
     def add_page(self):
         dlg_title, dlg_prompt = ('New page name', 'Enter a new name for the new page')
         text, ok = QInputDialog.getText(self, dlg_title, dlg_prompt)
         if not ok:
             return
     
-        from system import manager
-        manager.modules.add(name=text, folder_name='Pages')
+        system.manager.modules.add(name=text, module_type='Pages')
     
         main = find_main_widget(self)
         main.main_pages.build_schema()
@@ -274,91 +405,20 @@ class MainPages(ConfigPages):
             main.main_pages.edit_page(text)
 
 
-class MessageButtonBar(QWidget):
-    def __init__(self, parent):
-        super().__init__(parent=parent)
-        self.parent = parent
-        self.mic_button = self.MicButton(self)
-        self.enhance_button = TextEnhancerButton(self, self.parent, key='main_input')
-        self.edit_button = self.EditButton(self)
-        self.screenshot_button = self.ScreenshotButton(self)
-
-        self.layout = CVBoxLayout(self)
-        h_layout = CHBoxLayout()
-        h_layout.addWidget(self.mic_button)
-        h_layout.addWidget(self.edit_button)
-        self.layout.addLayout(h_layout)
-
-        h2_layout = CHBoxLayout()
-        h2_layout.addWidget(self.enhance_button)
-        h2_layout.addWidget(self.screenshot_button)
-        self.layout.addLayout(h2_layout)
-
-        self.hide()
-
-    class EditButton(IconButton):
-        def __init__(self, parent):
-            super().__init__(parent=parent, icon_path=':/resources/icon-dots.png', size=20, opacity=0.75)
-            self.setProperty("class", "send")
-            self.clicked.connect(self.on_clicked)
-
-        def on_clicked(self):
-            pass
-
-    class ScreenshotButton(IconButton):
-        def __init__(self, parent):
-            super().__init__(parent=parent, icon_path=':/resources/icon-screenshot.png', size=20, opacity=0.75)
-            self.setProperty("class", "send")
-            self.clicked.connect(self.on_clicked)
-
-        def on_clicked(self):
-            # minimize app, take screenshot, maximize app
-            main = find_main_widget(self)
-
-            hide_app = QGuiApplication.keyboardModifiers() == Qt.KeyboardModifier.ControlModifier
-            try:
-                import pyautogui
-                pyautogui.screenshot()  # check missing lib before minimizing
-                if hide_app:
-                    main.hide()  # showMinimized()
-                screenshot = pyautogui.screenshot()
-                if hide_app:
-                    main.show()  # showNormal()
-
-                app_path = get_application_path()
-                base_dir = os.path.join(app_path, 'screenshots')
-                os.makedirs(base_dir, exist_ok=True)
-                # filename like 'Screenshot_2023-10-01_12-00-00.png'
-                file_name = f"Screenshot_{QDateTime.currentDateTime().toString('yyyy-MM-dd_hh-mm-ss')}.png"
-                file_path = os.path.join(base_dir, file_name)
-                screenshot.save(file_path)
-                page_chat = main.main_pages.get('chat')
-                page_chat.attachment_bar.add_attachments(file_path)
-
-            except Exception as e:
-                display_message(self, f'Error taking screenshot: {e}', 'Error', QMessageBox.Warning)
-            finally:
-                main.show()
-
-    class MicButton(ToggleIconButton):
-        def __init__(self, parent):
-            super().__init__(parent=parent, icon_path=':/resources/icon-mic.png', color_when_checked='#6aab73', size=20, opacity=0.75)
-            self.setProperty("class", "send")
-            self.recording = False
-
-
 class NotificationWidget(QWidget):
     closed = Signal(QObject)
 
     def __init__(self, parent=None, color=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TranslucentBackground)
-
+        self.main = parent.main
         # Handle color defaults and conversions
         if not color:
             color = '#ff6464'
         elif color == 'blue':
             color = '#438BB9'
+        elif color == 'red':
+            color = '#ff6464'
         elif not color.startswith('#'):
             color = '#ff6464'
 
@@ -408,7 +468,7 @@ class NotificationWidget(QWidget):
         self.animation.setEasingCurve(QEasingCurve.InOutCubic)
         self.animation.finished.connect(self.on_animation_finished)
 
-    def show_message(self, message, duration=3000):
+    def show_message(self, message, duration=5000):
         # Set the message
         self.label.setText(message)
 
@@ -435,8 +495,9 @@ class NotificationWidget(QWidget):
         self.animation.setDuration(250)
         self.animation.start()
 
-        # Start timer for auto-hide
-        self.timer.start(duration)
+        if not self.main.isMinimized():
+            # Start timer for auto-hide
+            self.timer.start(duration)
 
     def hide_animation(self):
         # Start hide animation
@@ -479,9 +540,21 @@ class NotificationManager(QWidget):
 
         self.notifications = []
 
-    def show_notification(self, message, color=None):
+    def show_notification(self, message, title, icon='Information', color=None, duration=5000):
+        is_minimized = self.main.isMinimized()
+        if is_minimized:
+            icon = getattr(QSystemTrayIcon, icon, QSystemTrayIcon.Information)
+            self.main.tray.showMessage(
+                title,
+                message,
+                icon,
+                duration  # duration in ms
+            )
+            # self.tray.showMessage(message, color)
+            return
+        
         # Create new notification
-        notification = NotificationWidget(self.main, color=color)
+        notification = NotificationWidget(self, color=color)
         notification.closed.connect(self.remove_notification)
 
         # Add to layout
@@ -489,9 +562,11 @@ class NotificationManager(QWidget):
         self.notifications.append(notification)
 
         # Display the notification
-        notification.show_message(message)
-        self.show()
+        notification.show_message(message, duration)
+        # self.setVisible(True)
         self.update_position()
+
+        print(message)
 
     def remove_notification(self, notification):
         if notification in self.notifications:
@@ -499,176 +574,318 @@ class NotificationManager(QWidget):
             self.layout.removeWidget(notification)
             notification.deleteLater()
 
-        if not self.notifications:
-            self.hide()
-        else:
-            self.update_position()
+        # if not self.notifications:
+        #     self.hide()
+        # else:
+        # if self.notifications:
+        self.update_position()
 
     def update_position(self):
         # Position in top right corner of main window with padding
-        self.move(self.main.x() + self.main.width() - self.width() - 10,
+        # visible = self.notifications is not None and not self.main.isMinimized()
+        # self.setVisible(visible)
+        # if not visible:
+        #     return
+        self.move(self.main.x() + self.main.width() - self.width() - 90,
                  self.main.y() + 50)
         self.adjustSize()
 
 
-class MessageText(QTextEdit):
-    enterPressed = Signal()
+def migrate_tables():
 
-    def __init__(self, parent):
-        super().__init__()
-        self.parent = parent
-        self.setFixedHeight(46)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.setProperty("class", "msgbox")
+    main_db_path = get_db_path()
+    fin_db_path = os.path.join(os.path.dirname(main_db_path), 'finance.db')
+    # create the finance.db sqlite3 database if it doesn't exist
+    if os.path.exists(fin_db_path):
+        os.remove(fin_db_path)
 
-        self.button_bar = MessageButtonBar(self)
-        self.button_bar.setFixedHeight(46)
-        self.button_bar.move(self.width() - 40, 0)
+    other_conn = SqliteConnector(db_path=fin_db_path)
 
-        from system import manager
-        text_size = manager.config.get('display.text_size', 15)
-        text_font = manager.config.get('display.text_font', '')
+    other_conn.execute("""
+        CREATE TABLE "apis" (
+            "id"	INTEGER,
+            "name"	TEXT NOT NULL,
+            PRIMARY KEY("id" AUTOINCREMENT)
+        )
+    """)
+    other_conn.execute("""
+        CREATE TABLE "assets" (
+            "id"	INTEGER,
+            "api_id"	INTEGER NOT NULL,
+            "api_asset_id"	TEXT NOT NULL,
+            "name"	TEXT NOT NULL,
+            "symbol"	TEXT NOT NULL,
+            "kind"	TEXT DEFAULT NULL,
+            "group_to"	INTEGER DEFAULT NULL,
+            "metadata"	TEXT NOT NULL DEFAULT '{}',
+            "last_update"	TEXT NOT NULL DEFAULT '{}',
+            "last_price"	NUMERIC DEFAULT 0,
+            PRIMARY KEY("id" AUTOINCREMENT)
+        )
+    """)
+    other_conn.execute("""
+        CREATE TABLE "markets" (
+            "id"	INTEGER,
+            "api_id"	INTEGER NOT NULL,
+            "market_id"	TEXT NOT NULL,
+            "base_asset"	TEXT DEFAULT NULL,
+            "quote_asset"	TEXT DEFAULT NULL,
+            "base_symb"	TEXT NOT NULL,
+            "quote_symb"	TEXT NOT NULL,
+            PRIMARY KEY("id" AUTOINCREMENT)
+        )
+    """)
+    other_conn.execute("""
+        CREATE TABLE "trades" (
+            "id"	INTEGER,
+            "unix"	INTEGER NOT NULL,
+            "trade_id"	TEXT NOT NULL,
+            "exchange"	TEXT NOT NULL,
+            "asset_sold"	INTEGER NOT NULL,
+            "amt_sold"	NUMERIC NOT NULL,
+            "asset_received"	INTEGER NOT NULL,
+            "amt_received"	NUMERIC NOT NULL,
+            "fee_asset"	INTEGER NOT NULL,
+            "fee_amt"	NUMERIC NOT NULL,
+            "category"	TEXT NOT NULL DEFAULT '',
+            "symb_asset_sold"	TEXT DEFAULT '',
+            "symb_asset_received"	TEXT DEFAULT '',
+            "symb_fee_asset"	TEXT DEFAULT '',
+            "notes"	TEXT NOT NULL DEFAULT '',
+            "ignored"	INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY("id" AUTOINCREMENT)
+        )
+    """)
+    other_conn.execute("""
+        CREATE TABLE "depwiths" (
+            "id"	INTEGER,
+            "unix"	INTEGER NOT NULL,
+            "depwith"	INTEGER NOT NULL,
+            "user_id"	INTEGER NOT NULL,
+            "ins_shares"	INTEGER NOT NULL,
+            "ins_amt"	NUMERIC NOT NULL,
+            "tot_pot"	NUMERIC NOT NULL,
+            "ignore"	INTEGER NOT NULL,
+            "questionable"	INTEGER NOT NULL,
+            "asset_symb"	TEXT NOT NULL,
+            "asset_id"	INTEGER DEFAULT NULL,
+            "asset_amt"	NUMERIC DEFAULT 0,
+            "note"	TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY("id" AUTOINCREMENT)
+        )
+    """)
+    other_conn.execute("""
+        CREATE TABLE "files" (
+            "id"	INTEGER,
+            "file_id"	TEXT NOT NULL,
+            "file_path"	TEXT NOT NULL,
+            PRIMARY KEY("id" AUTOINCREMENT)
+        )
+    """)
 
-        self.font = QFont()
-        if text_font != '':  #  and text_font != 'Default':
-            self.font.setFamily(text_font)
-        self.font.setPointSize(text_size)
-        self.setFont(self.font)
-        self.setAcceptDrops(True)
+    other_conn.execute("""
+        CREATE TABLE "users" (
+            "id"	INTEGER,
+            "name"	TEXT NOT NULL,
+            "shares"	INTEGER NOT NULL,
+            PRIMARY KEY("id" AUTOINCREMENT)
+        )
+    """)
+    
+    # DEPWITHS
+    mysql_conn = MysqlConnector()
+    depwiths_rows = mysql_conn.get_results("""
+        SELECT 
+            dte,
+            depWith,
+            user,
+            insShares,
+            insAmt,
+            old_totPot,
+            asset_symb,
+            asset,
+            asset_amt,
+            `ignore`,
+            questionable,
+            note
+        FROM mfDepsWiths
+        WHERE mf_depwith_group = ''
+    """)
+    c_depwiths_rows = [
+        (
+            row[0].timestamp(),
+            row[1],
+            row[2],
+            row[3],
+            row[4],
+            row[5],
+            row[6],
+            row[7],
+            row[8],
+            row[9],
+            row[10],
+            row[11],
+        )
+        for row in depwiths_rows
+    ]
+    other_conn.execute(f"""
+        INSERT INTO depwiths (
+            unix, 
+            depwith, 
+            user_id, 
+            ins_shares, 
+            ins_amt, 
+            tot_pot, 
+            asset_symb, 
+            asset_id, 
+            asset_amt, 
+            `ignore`, 
+            questionable, 
+            note
+        )
+        VALUES {', '.join(['(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'] * len(c_depwiths_rows))}
+    """, flatten_list(c_depwiths_rows))
 
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        self.button_bar.move(self.width() - 40, 0)
+    # TRADES
+    trades_rows = mysql_conn.get_results("""
+        SELECT 
+            timestamp_opened,
+            trade_id,
+            exchange,
+            asset_sold,
+            amt_sold,
+            asset_received,
+            amt_received,
+            fee_asset,
+            fee_amt,
+            category,
+            notes,
+            symb_asset_sold,
+            symb_asset_received,
+            symb_fee_asset,
+            ignored
+        FROM trades
+        WHERE user_group = 2
+    """)
+    c_trades_rows = [
+        (
+            row[0].timestamp(),
+            row[1],
+            row[2],
+            row[3],
+            row[4],
+            row[5],
+            row[6],
+            row[7],
+            row[8],
+            row[9],
+            row[10],
+            row[11],
+            row[12],
+            row[13],
+            row[14],
+        )
+        for row in trades_rows
+    ]
+    other_conn.execute(f"""
+        INSERT INTO trades (
+            unix, 
+            trade_id, 
+            exchange, 
+            asset_sold, 
+            amt_sold, 
+            asset_received, 
+            amt_received, 
+            fee_asset, 
+            fee_amt, 
+            category, 
+            notes, 
+            symb_asset_sold, 
+            symb_asset_received, 
+            symb_fee_asset, 
+            ignored
+        )
+        VALUES {', '.join(['(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'] * len(c_trades_rows))}
+    """, flatten_list(c_trades_rows))
 
-    def keyPressEvent(self, event):
-        combo = event.keyCombination()
-        key = combo.key()
-        mod = combo.keyboardModifiers()
-        sh = self.sizeHint()
+    # USERS
+    users_rows = mysql_conn.get_results("""
+        SELECT 
+            id,
+            name,
+            shares
+        FROM users
+        WHERE user_group = 2
+    """)
+    other_conn.execute(f"""
+        INSERT INTO users (
+            id, 
+            name, 
+            shares
+        )
+        VALUES {', '.join(['(?, ?, ?)'] * len(users_rows))}
+    """, flatten_list(users_rows))
 
-        # Check for Ctrl + B key combination
-        if key == Qt.Key.Key_B and mod == Qt.KeyboardModifier.ControlModifier:
-            # Insert the code block where the cursor is
-            cursor = self.textCursor()
-            cursor.insertText("```\n\n```")  # Inserting with new lines between to create a space for the code
-            cursor.movePosition(QTextCursor.PreviousBlock, QTextCursor.MoveAnchor, 1)  # Move cursor inside the code block
-            self.setTextCursor(cursor)
-            self.resize(sh)
-            self.setFixedHeight(sh.height())
-            self.parent.sync_send_button_size()
-            return  # We handle the event, no need to pass it to the base class
+    # # ASSETS
+    assets_rows = mysql_conn.get_results("""
+        SELECT 
+            a.id,
+            a.api_id,
+            a.api_asset_id,
+            a.name,
+            a.symb,
+            '', -- UPPER(t.`type`),
+            a.group_id,
+            a.metadata,
+            a.last_update
+        FROM assets a
+    """)
+    # batches of 10_000
+    if assets_rows:
+        for i in range(0, len(assets_rows), 10_000):
+            batch = assets_rows[i:i+10_000]
+            if not batch:
+                continue
+            other_conn.execute(f"""
+                INSERT INTO assets (
+                    id,
+                    api_id,
+                    api_asset_id,
+                    name,
+                    symbol,
+                    kind,
+                    group_to,
+                    metadata,
+                    last_update,
+                    last_price
+                )
+                VALUES {', '.join(['(?, ?, ?, ?, ?, ?, ?, ?, ?, 0)'] * len(batch))}
+            """, flatten_list(batch))
 
-        if key == Qt.Key.Key_Enter or key == Qt.Key.Key_Return:
-            if mod != Qt.KeyboardModifier.ShiftModifier:
-                if self.toPlainText().strip() == '':
-                    return
+    pass
 
-                # If context not responding
-                page_chat = self.parent.main_pages.get('chat')
-                if not page_chat.workflow.responding:
-                    self.enterPressed.emit()
-                    return
-            # else:
-            #     event.setModifiers(Qt.KeyboardModifier.NoModifier)
-
-            #     super().keyPressEvent(event)
-            #     self.resize(sh)
-            #     self.setFixedHeight(sh.height())
-            #     self.parent.sync_send_button_size()
-            #     return
-
-        super().keyPressEvent(event)
-        self.resize(sh)
-        self.setFixedHeight(sh.height())
-        self.parent.sync_send_button_size()
-
-    def sizeHint(self):
-        doc = QTextDocument()
-        doc.setDefaultFont(self.font)
-        doc.setPlainText(self.toPlainText())
-
-        # Calculate the height based on the text
-        height = doc.size().height() + 10
-        return QSize(self.width(), min(height, 150))
-
-    files = []
-
-    # mouse hover event show mic button
-    def enterEvent(self, event):
-        self.button_bar.show()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        if not self.button_bar.mic_button.isChecked():
-            self.button_bar.hide()
-        super().leaveEvent(event)
-
-    # def dragEnterEvent(self, event):
-    #     logging.debug('MessageText.dragEnterEvent()')
-    #     if event.mimeData().hasUrls():
-    #         event.accept()
-    #     else:
-    #         event.ignore()
-    #
-    # def dropEvent(self, event):
-    #     logging.debug('MessageText.dropEvent()')
-    #     for url in event.mimeData().urls():
-    #         self.files.append(url.toLocalFile())
-    #         # insert text where cursor is
-    #
-    #     event.accept()
-    #
-    # def insertFromMimeData(self, source: QMimeData):
-    #     """
-    #     Reimplemented from QTextEdit.insertFromMimeData().
-    #     Inserts plain text data from the MIME data source.
-    #     """
-    #     # Check if the MIME data source has text
-    #     if source.hasText():
-    #         # Get the plain text from the source
-    #         text = source.text()
-    #
-    #         # Insert the plain text at the current cursor position
-    #         self.insertPlainText(text)
-    #     else:
-    #         # If the source does not contain text, call the base class implementation
-    #         super().insertFromMimeData(source)
-
-
-class SendButton(IconButton):
-    def __init__(self, parent):
-        super().__init__(parent=parent, icon_path=":/resources/icon-send.png", opacity=0.7)
-        self.parent = parent
-        self.setFixedSize(64, 46)
-        self.setProperty("class", "send")
-        self.update_icon(is_generating=False)
-
-    def update_icon(self, is_generating):
-        icon_iden = 'send' if not is_generating else 'stop'
-        pixmap = colorize_pixmap(QPixmap(f":/resources/icon-{icon_iden}.png"))
-        self.setIconPixmap(pixmap)
-
+    # table_col_map = {
+    #     'mfDepsWiths': {
+    #         'new_name': 'depwiths',
+    #         'columns': {
+    #             'unix': 'unix',
+    #             'depWith': 'depWith',
+    #             'user': 'user',
+    #             'ins_shares': 'ins_shares',
+    #             'ins_amt': 'ins_amt',
+    #             'tot_pot': 'tot_pot',
+    #         }
+    # }
 
 class Main(QMainWindow):
-    new_sentence_signal = Signal(str, str, str)
-    finished_signal = Signal()
-    error_occurred = Signal(str)
-    title_update_signal = Signal(str)
-    # task_completed = Signal(str, str)
-    show_notification_signal = Signal(str, str)
-
-    mouseEntered = Signal()
-    mouseLeft = Signal()
-
     def __init__(self):
         super().__init__()
 
-        # test_calligrapher()
-        # return
+        # migrate_tables()
+        # sys.exit(0)
 
-        # from utils.config import test_config
-        # test_config()
-        # return
+        # # scan_file_ids()
+        # # sys.exit(0)
 
         self._mousePressed = False
         self._mousePos = None
@@ -676,7 +893,44 @@ class Main(QMainWindow):
         self._resizing = False
         self._resizeMargins = 10  # Margin in pixels to detect resizing
 
+        self.setWindowTitle('AgentPilot')
+        self.setWindowIcon(QIcon(':/resources/icon.png'))
+
         self.main = self  # workaround for bubbling up
+
+        self.threadpool = QThreadPool()
+
+        self.central = QWidget()
+        self.central.setProperty("class", "central")
+        self.setCentralWidget(self.central)
+        self.layout = QVBoxLayout(self.central)
+
+        self.setMouseTracking(True)
+        self.setAcceptDrops(True)
+
+        self.title_bar = TitleButtonBar(parent=self)
+        system.manager = SystemManager()
+        system.manager._main_gui = self
+
+        # Initialize the notification manager
+        self.notification_manager = NotificationManager(self)
+        self.notification_manager.show()
+
+        self.init_app()
+
+        # Create tray icon (required for notifications)
+        self.tray = QSystemTrayIcon()
+        self.tray.setIcon(QIcon(':/resources/icon.png'))
+        self.tray.show()
+
+        safe_single_shot(2000, system.manager.daemons.start_all_daemons)
+    
+    def init_app(self):
+        clear_layout(self.layout)
+
+        # migrate_old_format('/home/jb/Desktop/CRYP/PRICE/BINANCE/0/BINANCE_ETHBTC_raw.h5')
+        # migrate_old_format('/home/jb/Desktop/CRYP/PRICE/BINANCE/0/BINANCE_LTCBTC_raw.h5')
+
         # self.check_if_app_already_running()
         telemetry.initialize()
 
@@ -689,13 +943,9 @@ class Main(QMainWindow):
         from utils.reset import ensure_system_folders
         ensure_system_folders()
 
-        self.threadpool = QThreadPool()
-        self.chat_threadpool = QThreadPool()
-        self.task_threadpool = QThreadPool()
-
-        self.manager = manager
-        self.manager._main_gui = self
-        self.manager.load()
+        # system.manager = SystemManager()
+        # system.manager._main_gui = self
+        system.manager.load()
 
         if 'AP_DEV_MODE' in os.environ.keys():
             from utils.reset import bootstrap
@@ -709,7 +959,7 @@ class Main(QMainWindow):
         self.test_running = False
         self.page_history = []
 
-        always_on_top = manager.config.get('system.always_on_top', True)
+        always_on_top = system.manager.config.get('system.always_on_top', True)
         current_flags = self.windowFlags()
         new_flags = current_flags
         if always_on_top:
@@ -720,57 +970,27 @@ class Main(QMainWindow):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
 
-        self.setWindowTitle('AgentPilot')
-        self.setWindowIcon(QIcon(':/resources/icon.png'))
-
-        self.central = QWidget()
-        self.central.setProperty("class", "central")
-        self.setCentralWidget(self.central)
-        self.layout = QVBoxLayout(self.central)
-
-        self.setMouseTracking(True)
-        self.setAcceptDrops(True)
-
-        # Initialize the notification manager
-        self.notification_manager = NotificationManager(self)
-        self.notification_manager.show()
-
-        self.title_bar = TitleButtonBar(parent=self)
-
         self.main_pages = MainPages(self)
 
         self.layout.addWidget(self.main_pages)
 
         self.side_bubbles = self.SideBubbles(self)
-        # Message text and send button
-        self.message_text = MessageText(self)
-        self.send_button = SendButton(self)
-
-        # Horizontal layout for message text and send button
-        self.input_container = QWidget()
-        hlayout = CHBoxLayout(self.input_container)
-        hlayout.addWidget(self.message_text)
-        # hlayout.addWidget(self.button_bar)
-        hlayout.addWidget(self.send_button)
-
-        self.layout.addWidget(self.input_container)
-
         # is_in_ide = 'AP_DEV_MODE' in os.environ
         # dev_mode_state = True if is_in_ide else None
         # self.main_menu.pages['Settings'].pages['System'].widgets[1].toggle_dev_mode(dev_mode_state)
 
-        self.resize(720, 900)
-        self.main_pages.load()
-        self.show()
+        from utils import sql
+        window_size = sql.get_scalar("SELECT value FROM settings WHERE `field` = 'window_size'", load_json=True)
+        if not window_size:
+            window_size = {}
+        self.resize(window_size.get('width', 720), window_size.get('height', 900))
 
         # self.main_menu.settings_sidebar.btn_new_context.setFocus()
         self.apply_stylesheet()
         self.apply_margin()
-        self.activateWindow()
 
-        app_config = manager.config
-        if self.page_settings:
-            self.page_settings.load_config(app_config)
+        app_config = system.manager.config
+        self.main_pages.pages['settings'].load_config(app_config)
 
         screen_geometry = QApplication.primaryScreen().availableGeometry()
         new_x = screen_geometry.x() + screen_geometry.width() - self.width()
@@ -779,37 +999,21 @@ class Main(QMainWindow):
 
         self.notification_manager.update_position()
 
-        if self.page_chat:
-            self.send_button.clicked.connect(self.page_chat.on_send_message)
-            self.message_text.enterPressed.connect(self.page_chat.on_send_message)
-            self.new_sentence_signal.connect(self.page_chat.message_collection.new_sentence, Qt.QueuedConnection)
-            self.finished_signal.connect(self.page_chat.message_collection.on_receive_finished, Qt.QueuedConnection)
-            self.error_occurred.connect(self.page_chat.message_collection.on_error_occurred, Qt.QueuedConnection)
-            self.title_update_signal.connect(self.page_chat.on_title_update, Qt.QueuedConnection)
-        # self.task_completed.connect(self.on_task_completed, Qt.QueuedConnection)
-        self.show_notification_signal.connect(self.notification_manager.show_notification, Qt.QueuedConnection)
-
-        self.page_chat.workflow_settings.header_widget.hide()
-
         self.main_pages.build_schema()
+        page_path = sql.get_scalar("SELECT value FROM settings WHERE `field` = 'page_path'", load_json=True)
+        if page_path:
+            set_selected_pages(self.main_pages, page_path)
+        self.main_pages.load()
 
-    @property
+        # # system.manager.modules.test_modules()
+        # QTimer.singleShot(100, system.manager.modules.test_modules)
+
+    @property  # todo remove
     def page_chat(self):
         return self.main.main_pages.get('chat')
 
-    @property
-    def page_contexts(self):
-        return self.main.main_pages.get('contexts')
-
-    @property
-    def page_agents(self):
-        return self.main.main_pages.get('agents')
-
-    @property
-    def page_settings(self):
-        return self.main.main_pages.get('settings')
-
     def get_uuid(self):
+        from utils import sql
         my_uuid = sql.get_scalar("SELECT value FROM settings WHERE `field` = 'my_uuid'")
         if my_uuid == '':
             my_uuid = str(uuid.uuid4())
@@ -817,6 +1021,7 @@ class Main(QMainWindow):
         return my_uuid
 
     def check_tos(self):
+        from utils import sql
         is_accepted = sql.get_scalar("SELECT value FROM settings WHERE `field` = 'accepted_tos'")
         if is_accepted == '1':
             return
@@ -829,6 +1034,7 @@ class Main(QMainWindow):
             sys.exit(0)
 
     def check_db(self):
+        from utils import sql
         # Check if the database is up-to-date
         try:
             upgrade_db = sql.check_database_upgrade()
@@ -848,6 +1054,20 @@ class Main(QMainWindow):
             sys.exit(0)
 
     def patch_db(self):
+        from utils import sql
+
+        # in `settings`.`app_config`, rename `display.parameter_color` to `display.accent_color_1` and `display.structure_color` to `display.accent_color_2`
+        app_config = sql.get_scalar("SELECT value FROM settings WHERE `field` = 'app_config'", load_json=True)
+        if app_config:
+            if 'display.parameter_color' in app_config:
+                app_config['display.accent_color_1'] = app_config.pop('display.parameter_color')
+                app_config['display.accent_color_2'] = app_config.pop('display.structure_color')
+                sql.execute("UPDATE settings SET value = ? WHERE `field` = 'app_config'", (json.dumps(app_config),))
+
+        # add 'finance_config' to settings table
+        if not sql.get_scalar("SELECT value FROM settings WHERE `field` = 'finance_config'"):
+            sql.execute("INSERT INTO settings (field, value) VALUES ('finance_config', '{}')")
+
         # update the json field  `roles`.`config`, set 'hide_bubbles' to
         audio_config = json.dumps({"bubble_bg_color": "#003b3b3b", "bubble_text_color": "#ff818365"})
         sql.execute("UPDATE roles SET config = ? WHERE name = 'audio'", (audio_config,))
@@ -867,7 +1087,7 @@ class Main(QMainWindow):
             sql.execute("UPDATE roles SET config = json_set(config, '$.module', ?) WHERE name = 'user'", ('UserBubble',))
             sql.execute("UPDATE roles SET config = json_set(config, '$.module', ?) WHERE name = 'assistant'", ('AssistantBubble',))
 
-        ensure_column_in_tables(
+        sql.ensure_column_in_tables(
             tables=[
                 'modules',
                 'entities',
@@ -880,7 +1100,7 @@ class Main(QMainWindow):
             default_value="0",
             not_null=True,
         )
-        ensure_column_in_tables(
+        sql.ensure_column_in_tables(
             tables=[
                 'folders',
             ],
@@ -895,7 +1115,44 @@ class Main(QMainWindow):
             )""",
             not_null=True,
         )
-        # ensure_column_in_tables(
+        sql.ensure_column_in_tables(
+            tables=[
+                'blocks',
+            ],
+            column_name='parent_id',
+            column_type='INTEGER',
+            default_value='NULL',
+            not_null=False,
+        )
+
+        # sql.execute("UPDATE folders SET name = 'Roles' WHERE name = 'Bubbles' and `type` = 'modules' and `locked` = 1")
+        
+        # add window_size to settings table
+        if not sql.get_scalar("SELECT value FROM settings WHERE `field` = 'window_size'"):
+            sql.execute("INSERT INTO settings (field, value) VALUES ('window_size', '{}')")
+        # add page_path to settings table
+        if not sql.get_scalar("SELECT value FROM settings WHERE `field` = 'page_path'"):
+            sql.execute("INSERT INTO settings (field, value) VALUES ('page_path', '{}')")
+        
+        sql.ensure_column_in_tables(
+            tables=['models'],
+            column_name='metadata',
+            column_type='TEXT',
+            default_value='{}',
+            not_null=True,
+        )
+        sql.ensure_column_in_tables(
+            tables=['models'],
+            column_name='provider_plugin',
+            column_type='TEXT',
+            default_value='litellm',
+            not_null=True,
+        )
+        # # rename `entities` to `agents`
+        # if sql.get_scalar("SELECT name FROM tables WHERE name = 'entities'"):
+        #     sql.execute("ALTER TABLE entities RENAME TO agents")
+
+            # ensure_column_in_tables(
         #     tables=['modules'],
         #     column_name='kind',
         #     column_type='TEXT',
@@ -956,6 +1213,7 @@ class Main(QMainWindow):
             self.load()
 
         def load(self):
+            from utils import sql
             recent_chats = sql.get_results("""
                 SELECT config
                 FROM contexts
@@ -1005,7 +1263,7 @@ class Main(QMainWindow):
                 self.hide()
 
     def position_title_bar(self):
-        x = self.width() - self.title_bar.width()
+        x = self.width() - self.title_bar.sizeHint().width()
         self.title_bar.move(x, 0)
         self.title_bar.raise_()
 
@@ -1019,26 +1277,24 @@ class Main(QMainWindow):
         for child in self.findChildren(QTreeWidget):
             child.apply_stylesheet()
         pass
+        # charts
+        from gui.widgets.chart_widget import ChartWidget
+        options = PySide6.QtCore.Qt.FindChildOptions.FindChildrenRecursively
+        for child in self.findChildren(ChartWidget, options=options):
+            child.apply_stylesheet()
+        pass
             
-        text_color = self.manager.config.get('display.text_color', '#c4c4c4')
-        if self.page_chat:
-            self.page_chat.top_bar.title_label.setStyleSheet(f"QLineEdit {{ color: {apply_alpha_to_hex(text_color, 0.90)}; background-color: transparent; }}"
-                                               f"QLineEdit:hover {{ color: {text_color}; }}")
+        text_color = system.manager.config.get('display.text_color', '#c4c4c4')
+        # if self.page_chat:
+        #     self.page_chat.top_bar.title_label.setStyleSheet(f"QLineEdit {{ color: {apply_alpha_to_hex(text_color, 0.90)}; background-color: transparent; }}"
+        #                                        f"QLineEdit:hover {{ color: {text_color}; }}")
 
     def apply_margin(self):
-        margin = self.manager.config.get('display.window_margin', 6)
+        margin = system.manager.config.get('display.window_margin', 6)
         self.layout.setContentsMargins(margin, margin, margin, margin)
 
-    def sync_send_button_size(self):
-        self.send_button.setFixedHeight(self.message_text.height())
-        self.message_text.button_bar.setFixedHeight(self.message_text.height())
-        self.message_text.button_bar.mic_button.setFixedHeight(int(self.message_text.height() / 2))
-        self.message_text.button_bar.enhance_button.setFixedHeight(int(self.message_text.height() / 2))
-        self.message_text.button_bar.edit_button.setFixedHeight(int(self.message_text.height() / 2))
-        self.message_text.button_bar.screenshot_button.setFixedHeight(int(self.message_text.height() / 2))
-
     def toggle_always_on_top(self):
-        always_on_top = self.manager.config.get('system.always_on_top', True)
+        always_on_top = system.manager.config.get('system.always_on_top', True)
 
         current_flags = self.windowFlags()
         new_flags = current_flags
@@ -1074,6 +1330,17 @@ class Main(QMainWindow):
                 self.moveWindow(event.globalPos())
 
     def mouseReleaseEvent(self, event):
+        if self._resizing:
+            # save window state to database
+            window_size = {
+                'width': self.width(),
+                'height': self.height(),
+            }
+            from utils import sql
+            sql.execute("""
+                UPDATE settings
+                SET value = json(?)
+                WHERE field = 'window_size'""", (json.dumps(window_size),))
         self._mousePressed = False
         self._resizing = False
         self._mousePos = None
@@ -1116,19 +1383,51 @@ class Main(QMainWindow):
         self._mousePos = self.mapFromGlobal(globalPos)
         self._mouseGlobalPos = globalPos
 
+    # # @qasync.asyncSlot()
     def run_test(self):
-        from gui.demo import DemoRunnable
-        # global tutorial_running
-        self.demo_runnable = DemoRunnable(self)
-        self.main.threadpool.start(self.demo_runnable)
-        self.main.test_running = True
-    #     self.demo_runnable.finished.connect(self.on_tutorial_finished)
-    #
-    # def on_tutorial_finished(self):
-    #     self.main.tutorial_running = False
+        # from gui.demo import DemoRun  # nable
+        # self.demo_runnable = DemoRun(self)  # nable(self)
 
-    # def stop_tutorial(self):
-    #     self.main.tutorial_running = False
+        self.demo_app = QApplication(sys.argv)
+        self.demo_app.setAttribute(Qt.AA_EnableHighDpiScaling)
+        self.demo_app.setStyle("Fusion")  # Fixes macos white line issue
+        self.demo_window = Main()
+        
+        from gui.demo import DemoRunnable
+        self.demo_runnable = DemoRunnable(self.demo_window)  # nable(self)
+        # await self.demo_runnable.run()
+        self.demo_window.threadpool.start(self.demo_runnable)
+        self.test_running = False
+    
+    # # @qasync.asyncSlot()
+    # def run_test(self):
+    #     self.reset_db()
+    #     self.load()
+    #     pass
+    #     # self.run_test()
+
+    #     # delete test_data.db
+    #     if os.path.exists('./test_data.db'):
+    #         os.remove('./test_data.db')
+
+    # def reset_db(self):
+    #     user_db_path = sql.get_db_path()
+    #     test_db_path = os.path.join(os.path.dirname(user_db_path), 'test_data.db')
+    #     shutil.copyfile(user_db_path, test_db_path)
+
+    #     sql.set_db_filepath(test_db_path)
+
+    #     reset_db = True
+    #     if reset_db:
+    #         tos_val = sql.get_scalar('SELECT value FROM settings WHERE field = "accepted_tos"')
+    #         if tos_val == '1':
+    #             reset_application(force=True, preserve_audio_msgs=True, bootstrap=False)
+    #             # print("DATABASE RESET.")
+
+    #         tos_val = sql.get_scalar('SELECT value FROM settings WHERE field = "accepted_tos"')
+    #         if tos_val == '0':
+    #             sql.execute('UPDATE settings SET value = "1" WHERE field = "accepted_tos"')
+
 
     def updateCursorShape(self, pos):
         rect = self.rect()
@@ -1154,6 +1453,15 @@ class Main(QMainWindow):
         super().resizeEvent(event)
         # self.update_resize_grip_position()
 
+    # def changeEvent(self, event):
+    #     if event.type() == QEvent.WindowStateChange:
+    #         if not self.isMinimized() and self.notification_manager.notifications:
+    #             self.notification_manager.setVisible(True)
+    #             for notification in self.notification_manager.notifications:
+    #                 notification.timer.start()
+    #             # self.notification_manager.update_position()
+    #     super().changeEvent(event)
+
     def dragEnterEvent(self, event):
         # Check if the event contains file paths to accept it
         if event.mimeData().hasUrls():
@@ -1174,20 +1482,21 @@ class Main(QMainWindow):
         event.acceptProposedAction()
 
 
-def launch(db_path=None):
+def launch():
     try:
-        sql.set_db_filepath(db_path)
-
         app = QApplication(sys.argv)
         app.setAttribute(Qt.AA_EnableHighDpiScaling)
         app.setStyle("Fusion")
-        # locale = QLocale.system().name()
-        # translator = QTranslator()
-        # if translator.load(':/lang/es.qm'):  # + QLocale.system().name()):
-        #     app.installTranslator(translator)
 
-        Main()
-        app.exec()
+        loop = qasync.QEventLoop(app)
+        asyncio.set_event_loop(loop)
+
+        window = Main()
+        window.show()
+        
+        with loop:
+            loop.run_forever()
+
     except Exception as e:
         if 'AP_DEV_MODE' in os.environ:
             # When debugging in IDE, re-raise

@@ -1,0 +1,1 @@
+# Pages module for News Feed plugin

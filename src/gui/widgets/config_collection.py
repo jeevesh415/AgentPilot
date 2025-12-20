@@ -21,6 +21,7 @@ configuration items with consistent behavior and operations across the collectio
 from PySide6.QtWidgets import QMessageBox, QInputDialog
 from typing_extensions import override
 
+from gui import system
 from gui.widgets.config_widget import ConfigWidget
 
 from gui.util import find_main_widget
@@ -50,7 +51,7 @@ class ConfigCollection(ConfigWidget):
                 page_button = self.settings_sidebar.page_buttons.get(page_name, None)
                 is_vis = page_button.isVisible() if page_button else False
 
-            if (not getattr(page, 'propagate', True) or
+            if (not getattr(page, 'propagate_config', True) or
                     not hasattr(page, 'get_config') or
                     # not getattr(page, 'conf_namespace', None) or
                     not is_vis
@@ -74,7 +75,6 @@ class ConfigCollection(ConfigWidget):
         # safe_name = convert_to_safe_case(new_page_name)
         if new_page_name in self.pages:
             display_message(
-                self,
                 f"A page named '{new_page_name}' already exists.",
                 title="Page Exists",
                 icon=QMessageBox.Warning,
@@ -92,8 +92,7 @@ class ConfigCollection(ConfigWidget):
                 WHERE id = ?
             """, (new_class, edit_bar.editing_module_id))
 
-            from system import manager
-            manager.load()  # _manager('modules')
+            system.manager.load()  # _manager('modules')
             page_editor.load()
             page_editor.config_widget.widgets[0].reimport()
 
@@ -123,15 +122,13 @@ class ConfigCollection(ConfigWidget):
                 WHERE id = ?
             """, (new_class, edit_bar.editing_module_id))
 
-            from system import manager
-            manager.load()  # _manager('modules')
+            system.manager.load()  # _manager('modules')
             page_editor.load()
             page_editor.config_widget.widgets[0].reimport()
 
     def edit_page(self, page_name):
         from gui.pages.modules import PageEditor
-        from system import manager
-        page_modules = manager.modules.get_modules_in_folder(
+        page_modules = system.manager.modules.get_modules_in_folder(
             module_type='Pages',
             fetch_keys=('uuid', 'name',)
         )

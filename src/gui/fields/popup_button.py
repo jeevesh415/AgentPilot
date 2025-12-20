@@ -24,7 +24,7 @@ class MemberPopupButton(IconButton):
         self.config_widget = PopupMember(self, use_namespace=self.use_namespace, member_type=self.member_type)
         self.clicked.connect(self.show_popup)
 
-    def get_value(self, value):
+    def get_value(self):
         """Get the value from the config widget"""
         return self.config_widget.get_config()
 

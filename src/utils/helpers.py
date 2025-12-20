@@ -4,26 +4,81 @@ import hashlib
 import re
 
 from sqlite3 import IntegrityError
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List
 
-from PySide6.QtCore import QSize, Qt, QPointF
+from PySide6.QtCore import QSize, Qt, QMetaObject, Q_ARG
 from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QColor
-# from pydantic import TypeAdapter
 
-# from utils.config import UserConfig, WorkflowConfig, MemberConfig
 from utils.filesystem import unsimplify_path
 from contextlib import contextmanager
-from PySide6.QtWidgets import QWidget, QMessageBox, QTreeWidget, QTreeWidgetItemIterator
+from PySide6.QtWidgets import QWidget, QMessageBox
 import requests
+
+from gui import system
 
 import json
 from utils import resources_rc, sql
 
 
-class ManagerController(dict):
+class BaseManager(dict):
+    """
+    The `BaseManager` class provides a base for managing data, including loading, saving, adding, and deleting items from a database table.
+
+    Attributes
+    ----------
+    system : SystemManager
+        Reference to the system system.manager.
+    db_connector : object, optional
+        Database connector instance used for data operations. (Default is SqliteConnector)
+    table_name : str, optional
+        Name of the database table managed by this system.manager.
+    query : str, optional
+        SQL query string for loading data.
+    query_params : tuple or dict, optional
+        Parameters for the SQL query.
+    load_columns : list of str, optional
+        List of columns to load from the database. (Default is None if query is provided)
+    folder_key : str, optional
+        Key used in `folders`.`type`. (Default is None)
+    default_fields : dict, optional
+        Default fields to apply when creating new items. (Default is {})
+    add_item_options : dict, optional
+        Options for adding new items (e.g., dialog titles/prompts).
+    del_item_options : dict, optional
+        Options for deleting items (e.g., dialog titles/prompts).
+    store_data : bool, optional
+        Indicates whether to store data in db_connector. (Default is True)
+    config_is_workflow : bool, optional
+        Indicates if the config field represents a workflow. (Default is False)
+
+    Methods
+    -------
+    __init__(system, **kwargs)
+        Initializes the BaseManager with configuration and database connector.
+    load()
+        Loads data from the database into the system.manager.
+    # ... (other methods not shown in this excerpt)
+    """
     def __init__(self, system, **kwargs):
         super().__init__()
         self.system = system
+
+        # Initialize connector # todo dedupe
+        # connector_param = kwargs.get('db_connector', None)
+        # connector_kwargs = kwargs.get('connector_kwargs', {})
+        # if connector_param is None:
+        #     connector_param = 'SqliteConnector'
+        from core.connectors.sqlite import SqliteConnector
+        self.db_connector = kwargs.get('db_connector', SqliteConnector())
+        # if isinstance(connector_param, str):
+        #     from gui import system as system
+        #     connector_class = system.get_module_class(module_type='Connectors', module_name=connector_param)
+        #     if connector_class:
+        #         self.db_connector = connector_class(**connector_kwargs)
+        #     else:
+        #         raise ValueError(f"Connector '{connector_param}' not found")
+        # else:
+            
         self.table_name = kwargs.get('table_name', None)
         self.query = kwargs.get('query', None)
         self.query_params = kwargs.get('query_params', None)
@@ -39,29 +94,46 @@ class ManagerController(dict):
         # self.default_config = kwargs.get('default_config', {})
 
         if self.table_name and not self.query and self.load_columns:
+            has_pinned_column = self.db_connector.get_scalar(f"SELECT COUNT(*) FROM pragma_table_info('{self.table_name}') WHERE name = 'pinned'") > 0
+            has_ordr_column = self.db_connector.get_scalar(f"SELECT COUNT(*) FROM pragma_table_info('{self.table_name}') WHERE name = 'ordr'") > 0
+            order_by = ""  # todo clean
+            if has_pinned_column:
+                order_by += "pinned DESC, "
+            if has_ordr_column:
+                order_by += "ordr, "
+            order_by += "name"
             self.query = f"""
                 SELECT {', '.join(self.load_columns)}
                 FROM {self.table_name}
-                -- ORDER BY pinned DESC, ordr, name
+                ORDER BY {order_by}
             """
+            # else:
+            #     self.query = f"""
+            #         SELECT {', '.join(self.load_columns)}
+            #         FROM {self.table_name}
+            #         ORDER BY ordr, name
+            #     """
 
-        sql.define_table(self.table_name)  # incase it's not defined yet
+        self.db_connector.define_table(self.table_name)  # incase it's not defined yet
+    
+    # def get_json(self):
+    #     return []
 
     def load(self):
         if not self.store_data:
             return
 
         if self.query:
-            rows = sql.get_results(self.query, self.query_params)
+            rows = self.db_connector.get_results(self.query, self.query_params)
         else:
             columns = ', '.join(f'`{col}`' for col in self.load_columns)
-            rows = sql.get_results(f"SELECT {columns} FROM `{self.table_name}`")
+            rows = self.db_connector.get_results(f"SELECT {columns} FROM `{self.table_name}`")
 
         self.clear()
         if len(self.load_columns) > 2:
             self.update({row[0]: row for row in rows})
         else:
-            self.update({key: json.loads(config) for key, config in rows})
+            self.update({key.replace('-', '_').replace(' ', '_'): json.loads(config) for key, config in rows})
 
     def add(self, name, **kwargs):
         skip_load = kwargs.pop('skip_load', False)
@@ -89,18 +161,18 @@ class ManagerController(dict):
         try:
             if 'uuid' in all_values:
                 uuid = all_values['uuid']
-                item_exists = sql.get_scalar(f"SELECT id FROM `{self.table_name}` WHERE `uuid` = ?", (uuid,))
+                item_exists = self.db_connector.get_scalar(f"SELECT id FROM `{self.table_name}` WHERE `uuid` = ?", (uuid,))
                 if item_exists:
                     set_query = ', '.join([f'`{col}` = ?' for col in all_values.keys()])
                     values += (uuid,)
                     # query = f"UPDATE `{self.table_name}` SET {set_query} WHERE `uuid` = ?"
-                    sql.execute(f"UPDATE `{self.table_name}` SET {set_query} WHERE `uuid` = ?", values)
+                    self.db_connector.execute(f"UPDATE `{self.table_name}` SET {set_query} WHERE `uuid` = ?", values)
                     return
                 
-            sql.execute(f"INSERT INTO `{self.table_name}` ({columns}) VALUES ({placeholders})", values)
+            self.db_connector.execute(f"INSERT INTO `{self.table_name}` ({columns}) VALUES ({placeholders})", values)
 
         except IntegrityError:
-            display_message(self,
+            display_message(
                 message='Item already exists',
                 icon=QMessageBox.Warning,
             )
@@ -111,7 +183,7 @@ class ManagerController(dict):
     def delete(self, key, where_field='id'):
         if self.table_name == 'contexts':  # todo create contexts manager
             # context_id = item_id
-            all_context_ids = sql.get_results("""
+            all_context_ids = self.db_connector.get_results("""
                 WITH RECURSIVE context_tree AS (
                     SELECT id FROM contexts WHERE id = ?
                     UNION ALL
@@ -122,15 +194,15 @@ class ManagerController(dict):
                 SELECT id FROM context_tree;""", (key,), return_type='list')
             if all_context_ids:
                 all_context_ids = tuple(all_context_ids)
-                sql.execute(f"DELETE FROM contexts_messages WHERE context_id IN ({','.join('?' * len(all_context_ids))});", all_context_ids)
-                sql.execute(f"DELETE FROM contexts WHERE id IN ({','.join('?' * len(all_context_ids))});", all_context_ids)
+                self.db_connector.execute(f"DELETE FROM contexts_messages WHERE context_id IN ({','.join('?' * len(all_context_ids))});", all_context_ids)
+                self.db_connector.execute(f"DELETE FROM contexts WHERE id IN ({','.join('?' * len(all_context_ids))});", all_context_ids)
 
         try:
-            sql.execute(f"DELETE FROM `{self.table_name}` WHERE `{where_field}` = ?", (key,))
+            self.db_connector.execute(f"DELETE FROM `{self.table_name}` WHERE `{where_field}` = ?", (key,))
             self.load()
 
         except Exception as e:
-            display_message(self,
+            display_message(
                 message=f'Item could not be deleted:\n' + str(e),
                 icon=QMessageBox.Warning,
             )
@@ -149,13 +221,6 @@ class ManagerController(dict):
             column = self.load_columns.index(column)
         return self[key][column]
 
-#
-# class WorkflowConfigDict(dict):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#
-#     def walk_inputs_recursive(self, member_id, search_list):
-#         pass
 
 def convert_model_json_to_obj(model_json: Any) -> Dict[str, Any]:
     if model_json is None:
@@ -200,16 +265,54 @@ def get_json_value(json_str, key, default=None):
         return default
 
 
-def get_module_type_folder_id(module_type):
-    from utils import sql
+def get_id_from_folder_path(folder_path):
+    """
+    Get the folder ID from a folder path, or None if not found.
+    The folder_path should be folder names separated by '/' (e.g., 'parent/child').
+    """
+    if not folder_path or folder_path == "":
+        return None
+        
+    path_parts = folder_path.split('/')
+    current_parent_id = None
+    
+    for part in path_parts:
+        folder_id = sql.get_scalar(
+            "SELECT id FROM folders WHERE name = ? AND parent_id " + 
+            ("IS NULL" if current_parent_id is None else "= ?"),
+            (part,) if current_parent_id is None else (part, current_parent_id)
+        )
+        if not folder_id:
+            return None
+        current_parent_id = folder_id
+        
+    return current_parent_id
+
+
+def get_module_type_folder_id(module_type, config={}):  # todo clean
+    if 'icon_path' not in config:
+        config['icon_path'] = ':/resources/icon-settings-solid.png'
     folder_id = sql.get_scalar(f"""
         SELECT id
         FROM folders
-        WHERE LOWER(name) = ?
+        WHERE REPLACE(LOWER(name), ' ', '_') = ?
             AND type = 'modules'
-    """, (module_type.lower(),))
-    # if not folder_id:
-    #     raise ValueError(f"Module type '{module_type}' not found in database.")
+    """, (module_type.lower().replace(' ', '_'),))
+    # if module_type.lower() == 'finance_apis':
+    #     pass
+    if not folder_id:
+        sql.execute("""
+            INSERT INTO folders (name, type, config)
+            VALUES (?, 'modules', ?)
+        """, (module_type, json.dumps(config)))
+        folder_id = sql.get_scalar("""
+            SELECT id
+            FROM folders
+            WHERE REPLACE(LOWER(name), ' ', '_') = ?
+                AND type = 'modules'
+        """, (module_type.lower().replace(' ', '_'),))
+    # # if not folder_id:
+    # #     raise ValueError(f"Module type '{module_type}' not found in database.")
     return folder_id
 
 
@@ -238,6 +341,21 @@ def message_button(name):
     return decorator
 
 
+def widget_button(name, **kwargs):
+    def decorator(obj):
+        obj._ap_widget_button = name
+        # if inspect.isclass(obj):
+        for key, value in kwargs.items():
+            setattr(obj, f'_ap_widget_button_{key}', value)
+        return obj
+        # else:
+        #     # If obj is a function/method, attach attributes to the function
+        #     # obj._ap_widget_button = name
+        #     obj._ap_widget_button_kwargs = kwargs.copy()
+        #     return obj
+    return decorator
+
+
 def message_extension(name):
     def decorator(cls):
         cls._ap_message_extension = name
@@ -255,13 +373,11 @@ def network_connected() -> bool:
 
 def convert_to_safe_case(text) -> str:
     """Use regex to return only a-z A-Z 0-9 and _"""
-    text = text.replace(' ', '_').replace('-', '_').lower()
+    text = text.replace(' ', '_').replace('-', '_')  # .lower()  todo
     return re.sub(r'[^a-zA-Z0-9_.]', '_', text)
 
 
 def get_avatar_paths_from_config(config, merge_multiple=False) -> Any:
-    from system import manager
-
     member_type = config.get('_TYPE', 'agent')
     if member_type == 'workflow':
         if 'avatar_path' in config:
@@ -278,9 +394,9 @@ def get_avatar_paths_from_config(config, merge_multiple=False) -> Any:
         return paths if paths else ':/resources/icon-user.png'
         # return paths # if not merge_multiple else '//##//##//'.join(flatten_list(paths))
 
-    member_class = manager.modules.get_module_class('Members', module_name=member_type)
+    member_class = system.manager.modules.get_module_class('Members', module_name=member_type)
     if not member_class:
-        display_message(manager._main_gui,
+        display_message(
             message=f"Member module '{member_type}' not found.",
             icon=QMessageBox.Warning,
         )
@@ -294,65 +410,20 @@ def get_avatar_paths_from_config(config, merge_multiple=False) -> Any:
     else:
         return default_avatar
 
-    # config_type = member_type
-    # if config_type == 'agent':
-    #     return config.get('info.avatar_path', ':/resources/icon-agent-solid.png')
-    # elif config_type == 'workflow':
-    #     paths = []
-    #     members = config.get('members', [])
-    #     for member_data in members:
-    #         member_config = member_data.get('config', {})
-    #         member_type = member_config.get('_TYPE', 'agent')
-    #         if member_type == 'user':
-    #             continue
-    #         paths.append(get_avatar_paths_from_config(member_config))
-    #
-    #     return paths if not merge_multiple else '//##//##//'.join(flatten_list(paths))
-    # elif config_type == 'user':
-    #     return ':/resources/icon-user.png'
-    # # elif config_type == 'tool':
-    # #     return ':/resources/icon-tool.png'
-    # # elif config_type == 'code':
-    # #     return ':/resources/icon-code.png'
-    # elif config_type == 'block':
-    #     block_type = config.get('_TYPE_PLUGIN', 'Text')
-    #     if block_type == 'Code':
-    #         return ':/resources/icon-code.png'
-    #     elif block_type == 'Prompt':
-    #         return ':/resources/icon-brain.png'
-    #     elif block_type == 'Module':
-    #         return ':/resources/icon-jigsaw.png'
-    #     return ':/resources/icon-blocks.png'
-    # elif config_type == 'model':
-    #     model_type = config.get('model_type', 'Voice')
-    #     if model_type == 'Voice':
-    #         return ':/resources/icon-voice.png'
-    #     elif model_type == 'Image':
-    #         return ':/resources/icon-image.png'
-    #     return ':/resources/icon-blocks.png'
-    # elif config_type == 'node':
-    #     return ''
-    # elif config_type == 'notif':
-    #     return ':/resources/icon-notif.png'
-    # # elif config_type == 'xml':
-    # #     return ':/resources/icon-xml.png'
-    # else:
-    #     raise NotImplementedError(f'Unknown config type: {config_type}')
-
 
 def flatten_list(lst) -> List:  # todo dirty
     flat_list = []
     for item in lst:
         if isinstance(item, list):
             flat_list.extend(flatten_list(item))
+        elif isinstance(item, tuple):
+            flat_list.extend(list(item))
         else:
             flat_list.append(item)
     return flat_list
 
 
 def get_member_name_from_config(config, incl_types=('agent', 'workflow')) -> str:
-    from system import manager
-
     member_type = config.get('_TYPE', 'agent')
     if member_type == 'workflow':
         names = []
@@ -366,9 +437,9 @@ def get_member_name_from_config(config, incl_types=('agent', 'workflow')) -> str
         return ', '.join(flatten_list(names))
         # return paths  # if not merge_multiple else '//##//##//'.join(flatten_list(paths))
 
-    member_class = manager.modules.get_module_class('Members', module_name=member_type)
+    member_class = system.manager.modules.get_module_class('Members', module_name=member_type)
     if not member_class:
-        display_message(manager._main_gui,
+        display_message(
             message=f"Member module '{member_type}' not found.",
             icon=QMessageBox.Warning,
         )
@@ -381,29 +452,6 @@ def get_member_name_from_config(config, incl_types=('agent', 'workflow')) -> str
         return name
     else:
         return default_name
-    # config_type = config.get('_TYPE', 'agent')  #!memberdiff!#
-    # if config_type == 'agent':
-    #     return config.get('info.name', 'Assistant')
-    # elif config_type == 'workflow':
-    #     members = config.get('members', [])
-    #     names = [get_member_name_from_config(member_data.get('config', {}))
-    #              for member_data in members
-    #              if member_data.get('config', {}).get('_TYPE', 'agent') in incl_types]
-    #     return ', '.join(names)
-    # elif config_type == 'user':
-    #     return config.get('info.name', 'You')
-    # elif config_type == 'tool':
-    #     return config.get('name', 'Tool')
-    # elif config_type == 'block':
-    #     return config.get('_TYPE_PLUGIN', 'Block')
-    # elif config_type == 'model':
-    #     return config.get('model_type', 'Model')
-    # elif config_type == 'node':
-    #     return 'Node'
-    # elif config_type == 'notif':
-    #     return 'Notif'
-    # else:
-    #     raise NotImplementedError(f'Unknown config type: {config_type}')
 
 
 def merge_config_into_workflow_config(config, entity_id=None, entity_table=None) -> Dict[str, Any]:
@@ -419,11 +467,12 @@ def merge_config_into_workflow_config(config, entity_id=None, entity_table=None)
 
     if member_type == 'agent':  # !wfdiff! #
         members = [
-            {'id': '1', 'linked_id': None, 'loc_x': 20, 'loc_y': 64, 'config': {"_TYPE": "user"}},
-            {'id': '2', 'linked_id': linked_id, 'loc_x': 100, 'loc_y': 80, 'config': config}
+            {'id': '1', 'linked_id': None, 'loc_x': 20, 'loc_y': 64, 'config': {"_TYPE": "user", "name": "You"}},
+            {'id': '2', 'linked_id': linked_id, 'loc_x': 100, 'loc_y': 80, 'config': config | {"name": "Agent"}}
         ]
     else:
-        members = [{'id': '1', 'linked_id': linked_id, 'loc_x': 100, 'loc_y': 80, 'config': config}]
+        pretty_name = member_type.replace('_', ' ').title()
+        members = [{'id': '1', 'linked_id': linked_id, 'loc_x': 100, 'loc_y': 80, 'config': config | {"name": pretty_name}}]
 
     config_json = {
         '_TYPE': 'workflow',
@@ -435,80 +484,6 @@ def merge_config_into_workflow_config(config, entity_id=None, entity_table=None)
     }
     return config_json
 
-# def merge_config_into_workflow_config(config: Dict[str, Any], entity_id: Optional[str] = None,
-#                                       entity_table: Optional[str] = None) -> WorkflowConfig:
-#     """
-#     Converts a configuration dictionary into a WorkflowConfig Pydantic model.
-#
-#     Args:
-#         config: The input configuration dictionary.
-#         entity_id: Optional entity ID for linking.
-#         entity_table: Optional table name for linking.
-#
-#     Returns:
-#         WorkflowConfig: A validated WorkflowConfig instance.
-#     """
-#     linked_id = f'{entity_table}.{entity_id}' if entity_id is not None and entity_table is not None else None
-#
-#     # Validate the input config using TypeAdapter
-#     adapter = TypeAdapter(Config)
-#     try:
-#         validated_config = adapter.validate_python(config)
-#     except ValueError:
-#         # Fallback to UserConfig if validation fails
-#         validated_config = UserConfig(_TYPE='user', **config)
-#
-#     member_type = validated_config._TYPE
-#
-#     if member_type == 'workflow':
-#         # If already a workflow, update linked_id if provided and return as WorkflowConfig
-#         if linked_id and isinstance(validated_config, WorkflowConfig):
-#             for member in validated_config.members:
-#                 if member.id == '2':  # Assuming '2' is the main member as per original logic
-#                     member.linked_id = linked_id
-#             return validated_config
-#         return WorkflowConfig.model_validate(validated_config.model_dump())
-#
-#     # Create members list based on member_type
-#     members = []
-#     if member_type == 'agent':
-#         # For agents, include a user member and the agent member
-#         members = [
-#             MemberConfig(
-#                 config=UserConfig(_TYPE='user'),
-#                 id='1',
-#                 linked_id=None,
-#                 loc_x=20,
-#                 loc_y=64
-#             ),
-#             MemberConfig(
-#                 config=validated_config,
-#                 id='2',
-#                 linked_id=linked_id,
-#                 loc_x=100,
-#                 loc_y=80
-#             )
-#         ]
-#     else:
-#         # For other types, include only the provided config
-#         members = [
-#             MemberConfig(
-#                 config=validated_config,
-#                 id='1',
-#                 linked_id=linked_id,
-#                 loc_x=100,
-#                 loc_y=80
-#             )
-#         ]
-#
-#     # Construct and return WorkflowConfig
-#     return WorkflowConfig(
-#         _TYPE='workflow',
-#         members=members,
-#         inputs=[],
-#         options={},
-#         params=[]
-#     )
 
 def merge_multiple_into_workflow_config(members, inputs) -> Dict[str, Any]:
     """Merge multiple configs into a single workflow config."""
@@ -523,50 +498,18 @@ def merge_multiple_into_workflow_config(members, inputs) -> Dict[str, Any]:
             {'id': str(i + 1), 'linked_id': None, 'loc_x': 100 + qpoint.x(), 'loc_y': 80 + qpoint.y(), 'config': config}
             for i, (qpoint, config) in enumerate(members)
         ],
-        'inputs': []
+        'inputs': [
+            {
+                'source_member_id': str(source_member_index + 1), 
+                'target_member_id': str(target_member_index + 1), 
+                'config': input_config
+            }
+            for source_member_index, target_member_index, input_config in inputs
+        ]
     }
-
-    # for i, config in enumerate(members):
-    #     merged_config['members'].append(config)
-    # for input_config in inputs:
-    #     merged_config['inputs'].append(input_config)
 
     return merged_config
 
-# def merge_multiple_into_workflow_config(members: List[Tuple[QPointF, Dict[str, Any]]], inputs: List[Dict[str, Any]]) -> WorkflowConfig:
-#     """Merge multiple configs into a single workflow config."""
-#     if not members:
-#         return WorkflowConfig(_TYPE='workflow', options={}, inputs=[], members=[], params=[])
-#
-#     # If there's only one member and it's already a workflow, return it after validation
-#     if len(members) == 1:
-#         config = members[0][1]
-#         if config.get('_TYPE') == 'workflow':
-#             adapter = TypeAdapter(Config)
-#             validated_config = adapter.validate_python(config)
-#             if isinstance(validated_config, WorkflowConfig):
-#                 return validated_config
-#
-#     # Create Member instances for each member config
-#     member_list = [
-#         MemberConfig(
-#             id=str(i + 1),
-#             linked_id=None,
-#             loc_x=100 + qpoint.x(),
-#             loc_y=80 + qpoint.y(),
-#             config=TypeAdapter(Config).validate_python(config)
-#         )
-#         for i, (qpoint, config) in enumerate(members)
-#     ]
-#
-#     # Create WorkflowConfig with validated members and inputs
-#     return WorkflowConfig(
-#         _TYPE='workflow',
-#         options={},
-#         inputs=inputs,  # Inputs are already Dict[str, Any], no further validation needed here
-#         members=member_list,
-#         params=[]
-#     )
 
 async def receive_workflow(
     config: Dict[str, Any],
@@ -576,7 +519,7 @@ async def receive_workflow(
     chat_title: str = '',
     main=None,
 ):
-    from members.workflow import Workflow
+    from plugins.workflows.members.workflow import Workflow
     wf_config = merge_config_into_workflow_config(config)
     workflow = Workflow(main=main, config=wf_config, kind=kind, params=params, tool_uuid=tool_uuid, chat_title=chat_title)
 
@@ -700,9 +643,9 @@ def get_metadata(config):
                         elif isinstance(kw.value, ast.Tuple):
                             tuple_as_list = [elt.value for elt in kw.value.elts if isinstance(elt, ast.Constant)]
                             super_kwargs[kw.arg] = tuple_as_list
-                        elif isinstance(kw.value, ast.Dict):
-                            dict_as_dict = {k.value: v.value for k, v in zip(kw.value.keys, kw.value.values)}
-                            super_kwargs[kw.arg] = dict_as_dict
+                        # elif isinstance(kw.value, ast.Dict):
+                        #     dict_as_dict = {k.value: e for k, v in zip(kw.value.keys, kw.value.values)}
+                        #     super_kwargs[kw.arg] = dict_as_dict
                         else:
                             super_kwargs[kw.arg] = 'complex_value'
                     break
@@ -713,7 +656,7 @@ def get_metadata(config):
         # Collect basic info for this class
         super_kwargs = None
         class_params = None
-        superclass = class_node.bases[0].id if class_node.bases else None
+        superclass = getattr(class_node.bases[0], 'id', None) if class_node.bases else None
 
         # Find __init__ to get parameters
         init_node = None
@@ -756,6 +699,7 @@ def get_metadata(config):
     attributes = {}
     methods = {}
     classes = {}
+    
     try:
         tree = ast.parse(code)
         for node in tree.body:
@@ -796,74 +740,69 @@ def try_parse_json(text):
         return False, {}
 
 
-def get_all_children(widget):
-    """Recursive function to retrieve all child pages of a given widget."""
-    children = []
-    for child in widget.findChildren(QWidget):
-        children.append(child)
-        children.extend(get_all_children(child))
+# def get_all_children(widget):
+#     """Function to retrieve all child widgets of a given widget."""
+#     # findChildren already recursively finds all descendants, no need for manual recursion
+#     children = list(widget.findChildren(QWidget))
 
-    # Specialized handling for QTreeWidget
-    if isinstance(widget, QTreeWidget):
-        for i in range(widget.topLevelItemCount()):
-            top_level_item = widget.topLevelItem(i)
-            # Create an iterator to traverse all items in the tree
-            it = QTreeWidgetItemIterator(top_level_item)
-            while it.value():
-                item = it.value()
-                for j in range(widget.columnCount()):
-                    cell_widget = widget.itemWidget(item, j)
-                    if cell_widget:
-                        children.append(cell_widget)
-                        # Also find children of the cell widget itself
-                        children.extend(get_all_children(cell_widget))
-                it += 1
-    return children
+#     # Specialized handling for QTreeWidget
+#     if isinstance(widget, QTreeWidget):
+#         for i in range(widget.topLevelItemCount()):
+#             top_level_item = widget.topLevelItem(i)
+#             # Create an iterator to traverse all items in the tree
+#             it = QTreeWidgetItemIterator(top_level_item)
+#             while it.value():
+#                 item = it.value()
+#                 for j in range(widget.columnCount()):
+#                     cell_widget = widget.itemWidget(item, j)
+#                     if cell_widget and cell_widget not in children:
+#                         children.append(cell_widget)
+#                         # Add cell widget's children (findChildren is already recursive)
+#                         children.extend(cell_widget.findChildren(QWidget))
+#                 it += 1
+#     return children
 
 
 @contextmanager
 def block_signals(*widgets, recurse_children=True):
     """Context manager to block signals for a widget and all its child pages."""
     all_widgets = []
+    original_states = []
     try:
-        # Get all child pages
+        # Get all child pages - use more efficient method
         for widget in widgets:
             all_widgets.append(widget)
             if recurse_children:
-                all_widgets.extend(get_all_children(widget))
+                # Use Qt's built-in findChildren which is more efficient than our custom function
+                children = widget.findChildren(QWidget)
+                all_widgets.extend(children)
 
-        # Block signals
+        # Store original states and block signals
         for widget in all_widgets:
+            original_states.append(widget.signalsBlocked())
             widget.blockSignals(True)
 
         yield
     finally:
-        # Unblock signals
-        for widget in all_widgets:
-            widget.blockSignals(False)
+        # Restore original signal states
+        for widget, original_state in zip(all_widgets, original_states):
+            widget.blockSignals(original_state)
 
 
-@contextmanager
-def block_pin_mode():
-    """Context manager to temporarily set pin mode to true, and then restore old state. A workaround for dialogs"""
-    from gui import main
-    try:
-        old_pin_mode = main.PIN_MODE
-        main.PIN_MODE = True
-        yield
-    finally:
-        main.PIN_MODE = old_pin_mode
-
-
-def display_message(parent, message, title=None, icon=QMessageBox.Information):
-    from gui.util import find_main_widget
-    main = find_main_widget(parent)
+def display_message(message, title=None, icon='Information', duration=5000):
+    from gui.util import find_main
+    main = find_main()
     if main:
         main.notification_manager.show_notification(
             message=message,
+            title=title or icon.name,
             color='blue' if icon == QMessageBox.Information else None,
+            icon=icon,
+            duration=duration
         )
     else:
+        if isinstance(icon, str):
+            icon = getattr(QMessageBox, icon, QMessageBox.Information)
         display_message_box(
             icon=icon,
             title=title or icon.name,
@@ -871,20 +810,22 @@ def display_message(parent, message, title=None, icon=QMessageBox.Information):
         )
 
 
-def display_message_box(icon, text, title, buttons=(QMessageBox.Ok)):
-    with block_pin_mode():
-        msg = QMessageBox()
-        msg.setIcon(icon)
-        msg.setText(text)
-        msg.setWindowTitle(title)
-        msg.setStandardButtons(buttons)
-        if QMessageBox.Yes in buttons:
-            msg.setDefaultButton(QMessageBox.Yes)
-        elif QMessageBox.Ok in buttons:
-            msg.setDefaultButton(QMessageBox.Ok)
-        msg.setWindowFlags(msg.windowFlags() | Qt.WindowStaysOnTopHint)
-        # msg.addButton('Archive', QMessageBox.ActionRole)
-        return msg.exec()
+def display_message_box(icon, text, title, buttons=(QMessageBox.Ok), custom_buttons=None):
+    msg = QMessageBox()
+    msg.setIcon(icon)
+    msg.setText(text)
+    msg.setWindowTitle(title)
+    msg.setStandardButtons(buttons)
+    if QMessageBox.Yes in buttons:
+        msg.setDefaultButton(QMessageBox.Yes)
+    elif QMessageBox.Ok in buttons:
+        msg.setDefaultButton(QMessageBox.Ok)
+    msg.setWindowFlags(msg.windowFlags() | Qt.WindowStaysOnTopHint)
+    if custom_buttons:
+        for button_text, role in custom_buttons:
+            msg.addButton(button_text, role)
+    # msg.addButton('Archive', QMessageBox.ActionRole)
+    return msg.exec()
 
 
 def apply_alpha_to_hex(hex_color, alpha):
@@ -893,115 +834,11 @@ def apply_alpha_to_hex(hex_color, alpha):
     return color.name(QColor.HexArgb)
 
 
-# def replace_times_with_spoken(text):
-#     pattern = r"\b\d{1,2}:\d{2}\s?[ap]m\b"
-#     time_matches = re.findall(pattern, text)
-#     for time_match in time_matches:
-#         has_space = ' ' in time_match
-#         is_12hr = 'PM' in time_match.upper() and int(time_match.split(':')[0]) < 13
-#         h_symbol = '%I' if is_12hr else '%H'
-#         converted_time = time.strptime(time_match,
-#                                        f'{h_symbol}:%M %p' if has_space else f'{h_symbol}:%M%p')  # '%H = 24hr, %I = 12hr'
-#         spoken_time = time_to_human_spoken(converted_time)  # , include_timeframe=False)
-#         text = text.replace(time_match, f' {spoken_time} ')
-#     return text
-#
-#
-# def time_to_human_spoken(inp_time, include_timeframe=True):
-#     # inp_time += ' AM'
-#     hour_12h = int(time.strftime("%I", inp_time))
-#     hour_24h = int(time.strftime("%H", inp_time))
-#     minute = int(time.strftime("%M", inp_time))
-#     am_pm = time.strftime("%p", inp_time).upper()
-#
-#     if am_pm == 'PM' and hour_24h < 12:
-#         hour_24h += 12
-#
-#     hour_mapping = {
-#         0: "twelve",
-#         1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
-#         6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten",
-#         11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen", 15: "fifteen",
-#         16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen"
-#     }
-#     dec_mapping = {
-#         0: "oh",
-#         2: "twenty", 3: "thirty", 4: "forty", 5: "fifty",
-#         6: "sixty", 7: "seventy", 8: "eighty", 9: "ninety"
-#     }
-#
-#     hour_map = hour_mapping[hour_12h]
-#     dec = minute // 10
-#     if 9 < minute < 20:
-#         min_map = hour_mapping[minute]
-#     elif minute == 0:
-#         min_map = 'oh clock'
-#     else:
-#         digits = hour_mapping[minute % 10] if minute % 10 != 0 else ''
-#         min_map = f'{dec_mapping[dec]} {digits}'
-#
-#     timeframe = ' in the morning'
-#     if 12 <= hour_24h < 19:
-#         timeframe = ' in the afternoon'
-#     if 19 <= hour_24h < 22:
-#         timeframe = ' in the evening'
-#     if 22 <= hour_24h < 24:
-#         timeframe = ' at night'
-#
-#     return f"{hour_map} {min_map}{timeframe if include_timeframe else ''}"
-
-
-def is_url_valid(url):
-    # regex to check if url is a valid url
-    regex = r"^(?:http|ftp)s?://" \
-            r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)" \
-            r"+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|" \
-            r"localhost|" \
-            r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})" \
-            r"(?::\d+)?" \
-            r"(?:/?|[/?]\S+)$"
-    return re.match(regex, url, re.IGNORECASE) is not None
-
-
 def split_lang_and_code(text):
     if text.startswith('```') and text.endswith('```'):
         lang, code = text[3:-3].split('\n', 1)
         return lang, code
     return None, text
-
-
-# def extract_square_brackets(string):
-#     pattern = r"\[(.*?)\]$"
-#     matches = re.findall(pattern, string)
-#     if len(matches) == 0: return None
-#     return matches[0]
-
-
-# def extract_parentheses(string):
-#     pattern = r"\((.*?)\)$"
-#     matches = re.findall(pattern, string)
-#     if len(matches) == 0: return None
-#     return matches[0]
-
-
-# def remove_brackets(string, brackets_to_remove='[('):
-#     if '[' in brackets_to_remove:
-#         string = re.sub(r"\[.*?\]", "", string)
-#     if '(' in brackets_to_remove:
-#         string = re.sub(r"\(.*?\)", "", string)
-#     if '{' in brackets_to_remove:
-#         string = re.sub(r"\{.*?\}", "", string)
-#     if '*' in brackets_to_remove:
-#         string = re.sub(r"\*.*?\*", "", string)
-#     return string.strip()  # .upper()
-
-
-# def extract_list_from_string(string):
-#     # The regex pattern matches either a number followed by a dot or a hyphen,
-#     # followed by optional spaces, and then captures the remaining text until the end of the line.
-#     pattern = r'(?:\d+\.|-)\s*(.*)'
-#     matches = re.findall(pattern, string)
-#     return matches
 
 
 def path_to_pixmap(paths, circular=False, diameter=30, opacity=1, def_avatar=None):
@@ -1018,7 +855,9 @@ def path_to_pixmap(paths, circular=False, diameter=30, opacity=1, def_avatar=Non
         stacked_pixmap = QPixmap(diameter, diameter)
         stacked_pixmap.fill(Qt.transparent)
 
-        painter = QPainter(stacked_pixmap)
+        painter = QPainter()
+        if not painter.begin(stacked_pixmap):
+            return stacked_pixmap  # Return empty pixmap if painting fails
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
 
@@ -1064,8 +903,9 @@ def path_to_pixmap(paths, circular=False, diameter=30, opacity=1, def_avatar=Non
             temp_pic = QPixmap(pic.size())
             temp_pic.fill(Qt.transparent)
 
-            painter = QPainter(temp_pic)
-
+            painter = QPainter()
+            if not painter.begin(temp_pic):
+                return pic  # Return original pixmap if painting fails
             painter.setOpacity(opacity)
             painter.drawPixmap(0, 0, pic)
             painter.end()
@@ -1073,7 +913,7 @@ def path_to_pixmap(paths, circular=False, diameter=30, opacity=1, def_avatar=Non
             pic = temp_pic
 
         # resize the pixmap to the desired diameter
-        if pic.width() != diameter or pic.height() != diameter:
+        if not pic.isNull() and (pic.width() != diameter or pic.height() != diameter):
             pic = pic.scaled(diameter, diameter, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
 
         return pic
@@ -1091,7 +931,9 @@ def create_circular_pixmap(src_pixmap, diameter=30):
     circular_pixmap.fill(Qt.transparent)  # Ensure transparency for the background
 
     # Create a painter to draw on the pixmap
-    painter = QPainter(circular_pixmap)
+    painter = QPainter()
+    if not painter.begin(circular_pixmap):
+        return QPixmap()  # Return empty pixmap if painting fails
     painter.setRenderHint(QPainter.Antialiasing)  # For smooth rendering
     painter.setRenderHint(QPainter.SmoothPixmapTransform)
 

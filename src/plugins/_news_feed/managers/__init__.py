@@ -1,0 +1,1 @@
+# Managers module for News Feed plugin

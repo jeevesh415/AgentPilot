@@ -10,6 +10,7 @@ automatically populates with available modules of the specified type.
 
 from PySide6.QtWidgets import QInputDialog
 
+from gui import system
 from gui.fields.combo import BaseCombo
 from utils.helpers import block_signals
 
@@ -25,8 +26,7 @@ class ModuleComboBox(BaseCombo):
 
     def load(self):
         with block_signals(self):
-            from system import manager
-            modules = manager.modules.get_modules_in_folder(
+            modules = system.manager.modules.get_modules_in_folder(
                 module_type=self.module_type,
                 fetch_keys=('name',)
             )
@@ -45,8 +45,7 @@ class ModuleComboBox(BaseCombo):
             module_label = 'module' if not self.module_type else f'{self.module_type} module'
             new_module_name, ok = QInputDialog.getText(self, f"New {module_label.title()}", f"Enter the name for the new {module_label}:")
             if ok and new_module_name:
-                from system import manager
-                manager.modules.add(new_module_name, module_type=self.module_type)
+                system.manager.modules.add(new_module_name, module_type=self.module_type)
 
                 self.load()
 

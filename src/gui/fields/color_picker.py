@@ -11,7 +11,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor, Qt
 from PySide6.QtWidgets import QColorDialog, QPushButton
 
-from utils.helpers import block_pin_mode, apply_alpha_to_hex
+from utils.helpers import apply_alpha_to_hex
 
 
 class ColorPickerWidget(QPushButton):
@@ -44,8 +44,7 @@ class ColorPickerWidget(QPushButton):
     def pick_color(self):
         current_color = self.color if self.color else Qt.white
         color_dialog = QColorDialog()
-        with block_pin_mode():
-            # show alpha channel
-            color = color_dialog.getColor(current_color, parent=self, options=QColorDialog.ShowAlphaChannel)
+        # show alpha channel
+        color = color_dialog.getColor(current_color, parent=self, options=QColorDialog.ShowAlphaChannel)
 
         self.set_value(color.name(QColor.HexArgb))

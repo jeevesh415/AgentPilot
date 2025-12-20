@@ -2,15 +2,16 @@ import json
 import logging
 import os
 import sys
+import yaml
 from pathlib import Path
-from typing import List, Any, Dict
+from typing import Any, Dict
 
 
 def get_application_path() -> str:
     """
     Gets the application's root directory.
 
-    For development (non-frozen) environments, it robustly finds the project root
+    For development (non-frozen) environments, it finds the project root
     by looking for the 'pyproject.toml' file. For frozen executables, it uses
     platform-specific logic to determine the application's location.
 
@@ -80,19 +81,19 @@ def get_application_path() -> str:
     # raise NotImplementedError(f"Unsupported platform: {sys.platform}")
 
 
-def get_all_baked_json(table_name: str) -> Dict[str, Dict[str, Any]]:
+def get_all_baked_items(table_name: str) -> Dict[str, Dict[str, Any]]:
     """
-    Finds, reads, and parses all .json files from a specified directory
+    Finds, reads, and parses all .json and .yaml/.yml files from a specified directory
     within 'src/utils/baked/'.
 
     This function works correctly whether the application is running from source
     or as a frozen executable created by PyInstaller.
 
     Args:
-        table_name: The name of the directory inside 'src/utils/baked/' to scan for JSON files.
+        table_name: The name of the directory inside 'src/utils/baked/' to scan for JSON and YAML files.
 
     Returns:
-        A list of parsed JSON objects (as dictionaries).
+        A dictionary where keys are file paths and values are parsed data objects (as dictionaries).
 
     Raises:
         FileNotFoundError: If the specified directory for the table_name does not exist.
@@ -117,30 +118,31 @@ def get_all_baked_json(table_name: str) -> Dict[str, Dict[str, Any]]:
             f"The data directory for table '{table_name}' was not found at expected path: {data_dir}"
         )
 
-    parsed_json_files = {}
+    parsed_files = {}
+    
+    # Process JSON files
     for file_path in data_dir.glob('*.json'):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                parsed_json_files[file_path] = json.load(f)
+                parsed_files[file_path] = json.load(f)
         except json.JSONDecodeError as e:
             print(f"Warning: Could not parse {file_path}. Error: {e}")
         except Exception as e:
             print(f"Warning: An unexpected error occurred while reading {file_path}. Error: {e}")
+    
+    # Process YAML files (.yaml and .yml extensions)
+    for pattern in ['*.yaml', '*.yml']:
+        for file_path in data_dir.glob(pattern):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    parsed_files[file_path] = yaml.safe_load(f)
+            except yaml.YAMLError as e:
+                print(f"Warning: Could not parse {file_path}. Error: {e}")
+            except Exception as e:
+                print(f"Warning: An unexpected error occurred while reading {file_path}. Error: {e}")
 
-    return parsed_json_files
+    return parsed_files
 
-# --- Example Usage ---
-
-# Imagine your directory structure is:
-# src/
-# └── utils/
-#     └── baked/
-#         ├── users/
-#         │   ├── user1.json
-#         │   └── user2.json
-#         └── products/
-#             ├── productA.json
-#             └── productB.json
 
 def unsimplify_path(path):
     exe_dir = get_application_path()

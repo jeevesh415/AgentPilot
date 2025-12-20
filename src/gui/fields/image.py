@@ -13,7 +13,7 @@ from PySide6.QtGui import Qt, QPainter, QPainterPath
 from PySide6.QtWidgets import QLabel, QFileDialog
 
 from utils.filesystem import unsimplify_path
-from utils.helpers import path_to_pixmap, block_pin_mode
+from utils.helpers import path_to_pixmap
 
 
 class Image(QLabel):
@@ -62,12 +62,11 @@ class Image(QLabel):
         self.avatarChanged.emit()
 
     def change_avatar(self):
-        with block_pin_mode():
-            fd = QFileDialog()
-            fd.setOption(QFileDialog.DontUseNativeDialog, True)
-            fd.setStyleSheet("QFileDialog { color: black; }")  # Modify text color
-            filename, _ = fd.getOpenFileName(None, "Choose Avatar", "",
-                                                        "Images (*.png *.jpeg *.jpg *.bmp *.gif *.webp)", options=QFileDialog.Options())
+        fd = QFileDialog()
+        fd.setOption(QFileDialog.DontUseNativeDialog, True)
+        fd.setStyleSheet("QFileDialog { color: black; }")  # Modify text color
+        filename, _ = fd.getOpenFileName(None, "Choose Avatar", "",
+                                                    "Images (*.png *.jpeg *.jpg *.bmp *.gif *.webp)", options=QFileDialog.Options())
 
         if filename:
             self.set_value(filename)
@@ -80,15 +79,20 @@ class Image(QLabel):
     def setPixmap(self, pixmap):
         if not pixmap:  # todo
             return
-        super().setPixmap(pixmap.scaled(
-            self.width(), self.height(),
-            Qt.KeepAspectRatioByExpanding,
-            Qt.SmoothTransformation
-        ))
+        if not pixmap.isNull():
+            pixmap = pixmap.scaled(
+                self.width(), self.height(),
+                Qt.KeepAspectRatioByExpanding,
+                Qt.SmoothTransformation
+            )
+        super().setPixmap(pixmap)
 
     def paintEvent(self, event):
         # Override paintEvent to draw a circular image
-        painter = QPainter(self)
+        painter = QPainter()
+        if not painter.begin(self):
+            super().paintEvent(event)
+            return
         painter.setRenderHint(QPainter.Antialiasing)
 
         path = QPainterPath()

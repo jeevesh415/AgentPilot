@@ -1,13 +1,3 @@
-"""
-Font selection field widget for configurable font choices.
-
-This module provides a FontComboBox field widget that extends BaseCombo to create
-a dropdown for selecting system fonts. It includes a custom delegate that renders
-each font name in its actual font family, making it easy to preview fonts.
-The widget automatically populates with available system fonts and integrates
-with the configuration system.
-"""  # unchecked
-
 from PySide6.QtGui import Qt, QFontDatabase
 from PySide6.QtWidgets import QStyledItemDelegate
 

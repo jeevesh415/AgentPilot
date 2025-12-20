@@ -101,5 +101,16 @@
         <file>resources/icon-link.png</file>
         <file>resources/icon-unlink.png</file>
         <file>resources/icon-description.png</file>
+        <file>resources/icon-finance.png</file>
+        <file>resources/icon-files.png</file>
+        <file>resources/icon-wait.png</file>
+        <file>resources/icon-video.png</file>
+        <file>resources/icon-lightning.png</file>
+        <file>resources/icon-lightning-solid.png</file>
+        <file>resources/icon-delete-2.png</file>
+        <file>resources/icon-split.png</file>
+        <file>resources/icon-effects.png</file>
+        <file>resources/icon-extend.png</file>
+        <file>resources/icon-gene.png</file>
     </qresource>
 </RCC>

@@ -20,6 +20,7 @@ while maintaining consistency and providing a rich user experience.
 """
 
 from functools import partial
+import inspect
 
 from PySide6.QtWidgets import *
 from PySide6.QtGui import Qt
@@ -27,6 +28,7 @@ from typing_extensions import override
 
 from utils.helpers import block_signals, convert_to_safe_case, display_message
 
+from gui import system
 from gui.util import find_attribute, clear_layout, CVBoxLayout, CHBoxLayout, get_field_widget, set_widget_value
 from utils import sql
 
@@ -69,6 +71,7 @@ class ConfigFields(ConfigWidget):
         self.field_alignment = kwargs.get('field_alignment', Qt.AlignLeft)
         self.layout = CVBoxLayout(self)
         self.label_width = kwargs.get('label_width', None)
+        self.auto_label_width = kwargs.get('auto_label_width', False)
         self.label_text_alignment = kwargs.get('label_text_alignment', Qt.AlignLeft)
         self.margin_left = kwargs.get('margin_left', 0)
         self.add_stretch_to_end = kwargs.get('add_stretch_to_end', True)
@@ -87,25 +90,34 @@ class ConfigFields(ConfigWidget):
             self.layout.addWidget(self.adding_field)
             self.layout.addStretch(1)
 
-            # if hasattr(self, 'after_init'):  # todo clean
-            self.after_init()
+            if hasattr(self, 'after_init'):
+                self.after_init()
             return
 
         self.layout.setContentsMargins(self.margin_left, 0, 0, 5)
         row_layout = None
         last_row_key = None
         has_stretch_y = False
-
-        from system import manager
+        biggest_label_width = 0
+        auto_size_fields = []
 
         for param_dict in schema:
-            key = convert_to_safe_case(param_dict.get('key', param_dict['text']))
+            _type = param_dict.get('type', None)
+            if _type == 'stretch':
+                if row_layout:
+                    row_layout.addStretch(1)
+                else:
+                    self.layout.addStretch(1)
+                continue
+
+            key = convert_to_safe_case(param_dict.get('key', param_dict['text'].lower()))
             row_key = param_dict.get('row_key', None)
             label_position = param_dict.get('label_position', 'left')
             label_width = param_dict.get('label_width', None) or self.label_width
             has_toggle = param_dict.get('has_toggle', False)
             tooltip = param_dict.get('tooltip', None)
             visible = param_dict.get('visible', True)
+            readonly = param_dict.get('readonly', False)
             stretch_x = param_dict.get('stretch_x', False)
             stretch_y = param_dict.get('stretch_y', False)
 
@@ -130,7 +142,7 @@ class ConfigFields(ConfigWidget):
                 print(f'Widget type {param_type} not found in modules. Skipping field: {key}')
                 continue
 
-            setattr(self, key, widget)
+            setattr(self, f'{key}_wgt', widget)
 
             if stretch_x or stretch_y:
                 x_pol = QSizePolicy.Expanding if stretch_x else QSizePolicy.Fixed
@@ -141,8 +153,9 @@ class ConfigFields(ConfigWidget):
                 widget.build_schema()
 
             param_layout = CHBoxLayout() if label_position == 'left' else CVBoxLayout()
-            param_layout.setContentsMargins(2, 8, 2, 0)
+            param_layout.setContentsMargins(2, 4, 2, 0)
             param_layout.setAlignment(self.field_alignment)
+            
             if label_position is not None:
                 label_layout = CHBoxLayout()
                 label_layout.setAlignment(self.label_text_alignment)
@@ -152,6 +165,8 @@ class ConfigFields(ConfigWidget):
                     param_label.setVisible(False)
                 if label_width:
                     param_label.setFixedWidth(label_width)
+                if label_position == 'left':
+                    param_label.setMinimumHeight(22)
                 setattr(self, f'{key}_lbl', param_label)
                 label_layout.addWidget(param_label)
 
@@ -167,9 +182,8 @@ class ConfigFields(ConfigWidget):
                     toggle = QCheckBox()
                     toggle.setFixedWidth(20)
                     setattr(self, f'{key}_tgl', toggle)
-                    # self.connect_signal(toggle)
                     toggle.stateChanged.connect(partial(self.toggle_widget, toggle, key))
-                    # self.toggle_widget(toggle, key, None)
+                    
                     label_minus_width += 20
                     label_layout.addWidget(toggle)
 
@@ -178,7 +192,14 @@ class ConfigFields(ConfigWidget):
 
                 if label_width:
                     param_label.setFixedWidth(label_width - label_minus_width)
-
+                else:
+                    # param_lbl_width = param_label.width()
+                    param_lbl_ideal_width = param_label.fontMetrics().boundingRect(param_label.text()).width() + 20
+                    # if param_lbl_width > 300:
+                    #     pass
+                    biggest_label_width = max(biggest_label_width, param_lbl_ideal_width)
+                    auto_size_fields.append(key)
+                
                 param_layout.addLayout(label_layout)
 
             param_layout.addWidget(widget)
@@ -193,8 +214,6 @@ class ConfigFields(ConfigWidget):
                     tooltip='Options',
                     size=20,
                 )
-                # options_btn.setProperty('class', 'send')
-                # options_btn.move(widget.x() + widget.width() - 20, widget.y())
                 if not find_attribute(self, 'user_editing'):
                     options_btn.hide()
                 param_layout.addWidget(options_btn)
@@ -213,8 +232,29 @@ class ConfigFields(ConfigWidget):
             if not visible:
                 widget.setVisible(False)
 
+            if readonly:
+                widget.setEnabled(False)
+
         if row_layout:
             self.layout.addLayout(row_layout)
+        
+        if self.auto_label_width and biggest_label_width > 0:
+            # biggest_label_width = 0
+            # auto_size_fields = []
+            # for param_dict in self.schema:
+            #     key = convert_to_safe_case(param_dict.get('key', param_dict['text'].lower()))
+            #     if param_dict.get('label_width', None):
+            #         continue
+
+            #     auto_size_fields.append(key)
+            #     label_widget = getattr(self, f'{key}_lbl', None)
+            #     if label_widget:
+            #         biggest_label_width = max(biggest_label_width, label_widget.width())
+
+            for key in auto_size_fields:
+                label_widget = getattr(self, f'{key}_lbl', None)
+                if label_widget:
+                    label_widget.setFixedWidth(biggest_label_width)
 
         if getattr(self, 'user_editable', True):
             self.layout.addSpacing(7)
@@ -226,22 +266,23 @@ class ConfigFields(ConfigWidget):
         if self.add_stretch_to_end and not has_stretch_y:
             self.layout.addStretch(1)
 
-        # if hasattr(self, 'after_init'):
-        self.after_init()
+        if hasattr(self, 'after_init'):
+            self.after_init()
 
     @override
     def load(self):
         """Loads the widget values from the config dict"""
-        # return
         with block_signals(self):
             for param_dict in self.schema:
-                # if self.__class__.__name__ == 'Module_Config_Fields':  # and key == 'load_on_startup':
-                #     print('load prompt_model: ', config_value)
-                key = convert_to_safe_case(param_dict.get('key', param_dict['text']))
+                _type = param_dict.get('type', 'text')  # todo dedupe
+                skip_types = ('stretch',)
+                if _type in skip_types:
+                    continue
 
-                widget = getattr(self, key, None)
+                key = convert_to_safe_case(param_dict.get('key', param_dict['text'].lower()))
+                widget = getattr(self, f'{key}_wgt', None)
                 if not widget:
-                    print(f'Widget `{key}` not found in config fields. Skipping.')
+                    print(f'Widget `{key}_wgt` not found in config fields. Skipping.')
                     continue
                 config_key = f"{self.conf_namespace}.{key}" if self.conf_namespace else key
 
@@ -264,18 +305,18 @@ class ConfigFields(ConfigWidget):
                         pass
                     if has_config_value:
                         set_widget_value(widget, config_value)
-                        # widget.set_value(config_value)
                     else:
                         set_widget_value(widget, param_dict.get('default', ''))
-                        # widget.set_value(param_dict.get('default', ''))
+                        
         self.refresh_visibility()
 
     def load_config(self, config=None):
         """Only accepts keys that are in the schema"""
         super().load_config(config)
 
-        schema_keys = [convert_to_safe_case(param_dict.get('key', param_dict['text']))
-                       for param_dict in self.schema]
+        schema_keys = [convert_to_safe_case(param_dict.get('key', param_dict['text'].lower()))
+                       for param_dict in self.schema
+                       if param_dict.get('type', 'text') != 'stretch']
 
         filtered_config = {}
         for key, value in self.config.items():
@@ -296,8 +337,12 @@ class ConfigFields(ConfigWidget):
             # is_table_field = param_dict.get('is_table_field', False)
             # if is_table_field:
             #     continue
+            _type = param_dict.get('type', 'text')  # todo dedupe
+            skip_types = ('stretch',)
+            if _type in skip_types:
+                continue
 
-            param_key = convert_to_safe_case(param_dict.get('key', param_dict['text']))
+            param_key = convert_to_safe_case(param_dict.get('key', param_dict['text'].lower()))
             config_key = f"{self.conf_namespace}.{param_key}" if self.conf_namespace else param_key
 
             widget_toggle = getattr(self, f'{param_key}_tgl', None)
@@ -305,10 +350,10 @@ class ConfigFields(ConfigWidget):
                 if not widget_toggle.isChecked():
                     config.pop(config_key, None)
                     continue
-
-            widget = getattr(self, param_key, None)
+                
+            widget = getattr(self, f'{param_key}_wgt', None)
             if not widget:
-                print(f'Widget `{param_key}` not found in config fields. Skipping.')
+                print(f'Widget `{param_key}_wgt` not found in config fields. Skipping.')
                 continue
 
             if hasattr(widget, 'get_value'):
@@ -325,14 +370,18 @@ class ConfigFields(ConfigWidget):
     def refresh_visibility(self):
         """Refreshes the visibility of widgets based on their visibility predicates"""
         for param_dict in self.schema:
-            key = convert_to_safe_case(param_dict.get('key', param_dict['text']))
-            widget = getattr(self, key, None)
+            key = convert_to_safe_case(param_dict.get('key', param_dict['text'].lower()))
+            widget = getattr(self, f'{key}_wgt', None)
             if not widget:
                 continue
 
             visibility_predicate = param_dict.get('visibility_predicate', None)
             if visibility_predicate and callable(visibility_predicate):
-                is_visible = visibility_predicate(self)
+                takes_params = len(inspect.signature(visibility_predicate).parameters) > 0
+                if takes_params:
+                    is_visible = visibility_predicate(self)
+                else:
+                    is_visible = visibility_predicate()
                 label_widget = getattr(self, f'{key}_lbl', None)
                 toggle_box = getattr(self, f'{key}_tgl', None)
                 if label_widget:
@@ -345,15 +394,15 @@ class ConfigFields(ConfigWidget):
                     widget.setVisible(is_visible)
 
     def toggle_widget(self, toggle, key, _):
-        widget = getattr(self, key)
+        widget = getattr(self, f'{key}_wgt')
         widget.setVisible(toggle.isChecked())
         self.update_config()
 
     def clear_fields(self):
         """Clears all fields in the config widget"""
         for param_dict in self.schema:
-            key = convert_to_safe_case(param_dict.get('key', param_dict['text']))
-            widget = getattr(self, key, None)
+            key = convert_to_safe_case(param_dict.get('key', param_dict['text'].lower()))
+            widget = getattr(self, f'{key}_wgt', None)
             if widget and hasattr(widget, 'clear_value'):
                 widget.clear_value()
 
@@ -387,7 +436,7 @@ class ConfigFields(ConfigWidget):
             field_type = self.cb_type.currentText().strip()
 
             if field_name == '':
-                display_message(self,
+                display_message(
                     message='Field name is required',
                     icon=QMessageBox.Warning,
                 )
@@ -402,7 +451,6 @@ class ConfigFields(ConfigWidget):
                     WHERE id = ?
                 """, (new_class, edit_bar.editing_module_id))
 
-                from system import manager
-                manager.load()  # _manager('modules')
+                system.manager.load()  # _manager('modules')
                 page_editor.load()
                 page_editor.config_widget.widgets[0].reimport()

@@ -4,6 +4,7 @@ from textwrap import dedent
 
 import astor
 from utils.helpers import convert_to_safe_case
+from gui import system
 
 
 field_type_alias_map = {
@@ -123,8 +124,7 @@ def _apply_ast_modification(module_id, modifier_class):
     The modifier_class is instantiated with no arguments, assuming it's a closure
     that captures its required variables from its defining scope.
     """
-    from system import manager
-    module_config = manager.modules.get(module_id, {})
+    module_config = system.manager.modules.get(module_id, {})
     source = module_config.get('data', None)
     if not source:
         return None
@@ -135,7 +135,7 @@ def _apply_ast_modification(module_id, modifier_class):
     modified_source = astor.to_source(modified_tree, source_generator_class=CustomSourceGenerator)
 
     module_config['data'] = modified_source
-    manager.load()
+    system.manager.load()
 
     return modified_source
 
@@ -332,8 +332,8 @@ def modify_class_add_field(module_id, class_path, field_name, field_type):
 #             self.current_path.pop()
 #             return node
 #
-#     from system import manager
-#     module_config = manager.modules.get(module_id, {})
+#     from gui import system
+#     module_config = system.manager.modules.get(module_id, {})
 #     source = module_config.get('data', None)
 #     if not source:
 #         return None
@@ -345,8 +345,8 @@ def modify_class_add_field(module_id, class_path, field_name, field_type):
 #
 #     # Update the module data with the modified source
 #     module_config['data'] = modified_source
-#     # manager.modules[module_id] = module_config
-#     manager.load()
+#     # system.manager.modules[module_id] = module_config
+#     system.manager.load()
 #
 #     return modified_source
 #
@@ -402,8 +402,8 @@ def modify_class_add_field(module_id, class_path, field_name, field_type):
 #
 #             init_node.body.append(new_pages)
 #
-#     from system import manager
-#     module_config = manager.modules.get(module_id, {})
+#     from gui import system
+#     module_config = system.manager.modules.get(module_id, {})
 #     source = module_config.get('data', None)
 #     if not source:
 #         return None
@@ -415,8 +415,8 @@ def modify_class_add_field(module_id, class_path, field_name, field_type):
 #
 #     # Update the module data with the modified source
 #     module_config['data'] = modified_source
-#     # manager.modules[module_id] = module_config
-#     manager.load()
+#     # system.manager.modules[module_id] = module_config
+#     system.manager.load()
 #
 #     return modified_source
 #
@@ -463,8 +463,8 @@ def modify_class_add_field(module_id, class_path, field_name, field_type):
 #
 #             return None
 #
-#     from system import manager
-#     module_config = manager.modules.get(module_id, {})
+#     from gui import system
+#     module_config = system.manager.modules.get(module_id, {})
 #     source = module_config.get('data', None)
 #     if not source:
 #         return None
@@ -476,8 +476,8 @@ def modify_class_add_field(module_id, class_path, field_name, field_type):
 #
 #     # Update the module data with the modified source
 #     module_config['data'] = modified_source
-#     # manager.modules[module_id] = module_config
-#     manager.load()
+#     # system.manager.modules[module_id] = module_config
+#     system.manager.load()
 #
 #     return modified_source
 
@@ -518,8 +518,8 @@ def modify_class_add_field(module_id, class_path, field_name, field_type):
 #             new_schema = ast.parse(f"self.schema = [{new_entry.body[0].value}]").body[0]
 #             init_node.body.append(new_schema)
 #
-#     from system import manager
-#     module_config = manager.modules.get(module_id, {})
+#     from gui import system
+#     module_config = system.manager.modules.get(module_id, {})
 #     source = module_config.get('data', None)
 #     if not source:
 #         return None
@@ -531,8 +531,8 @@ def modify_class_add_field(module_id, class_path, field_name, field_type):
 #
 #     # Update the module data with the modified source
 #     module_config['data'] = modified_source
-#     # manager.modules[module_id] = module_config
-#     manager.load()
+#     # system.manager.modules[module_id] = module_config
+#     system.manager.load()
 #
 #     return modified_source
 

@@ -3,16 +3,14 @@
 <p align="center">️
   <img src="docs/demo.png" width="600px" alt="AgentPilot desktop demo" />
 <br><br>
-A versatile workflow automation system. Create, organize, and execute complex AI-driven tasks.
-Agent Pilot provides a seamless experience, whether you want to chat with a single LLM or a complex multi-member workflow.
+A generative, fully customizable UI that lets you design entire experiences—from custom pages to deeply layered configurations. This flexibility transforms the interface into an "everything app" tailored precisely to your world.
+<br><br>
+Agent Pilot features a powerful workflow automation system. Build intelligent agents, schedule recurring workflows, and choreograph intricate AI-driven workflows with ease. Whether you’re chatting with a single LLM or debugging a complex workflow, Agent Pilot delivers a seamless, unified experience.
 <br><br>
 With an intuitive and feature-rich interface, you can effortlessly design AI workflows and chat with them in real-time.
 Branching chats are supported, allowing flexible interactions and iterative refinement.
 <br><br>
-Agent Pilot offers generative and customizable UI, allowing creation of custom pages and hierarchical configs.
-This flexibility gives you the freedom to design an interface that aligns with your specific needs and effortlessly integrate into your workflows.
-<br><br>
-The system supports scheduled and recurring workflows that can be set to run based on natural language expressions of time, enabling automation that ranges from every second to every leap year.
+Create **Projects** with Claude Code to design and manage any type of initiative, from simple prototypes to complex systems. Each project is a living space where agents, workflows, and custom interfaces come together—and even the app itself can exist as a project in continuous evolution. This recursive design deepens the vision of an "everything app," transforming your workspace into an extensible environment that adapts, expands, and grows alongside your ideas.
 </p>
 
 <div align="center">
@@ -65,13 +63,22 @@ The system supports scheduled and recurring workflows that can be set to run bas
   </tr>
 </table>
 
-
-Building from source: [How to build from source](docs/guides/how_to_build.md) <br>
-
 > [!TIP]
 > You can migrate your old database to the new version by replacing your executable with the new one before starting the application.
 
-## Features
+### For developers
+[Building from source](docs/guides/how_to_build.md) <br>
+[Coding standards](docs/guides/how_to_build.md)<br>
+[GUI Architecture](docs/guides/how_to_build.md) <br>
+[Module documentation](docs/guides/how_to_build.md)<br>
+[Creating a plugin](docs/guides/how_to_build.md)<br>
+
+## Plugins
+[Workflow engine](docs/guides/how_to_build.md) <br>
+[Project studio](docs/guides/how_to_build.md) <br>
+[Project studio](docs/guides/how_to_build.md) <br>
+
+## Workflow engine
 
 ###  👤 Create Agents
 Create new agents, edit their configuration and organise them into folders.<br>
@@ -113,6 +120,7 @@ These parameters can be modified at runtime and re-executed, this creates a bran
 ### 💻 Modules
 Agent Pilot is modular and easily extensible, over 95% of the code is contained in editable modules of the following types:<br>
 - Managers
+- Connectors
 - Pages
 - Widgets
 - Fields
@@ -121,6 +129,7 @@ Agent Pilot is modular and easily extensible, over 95% of the code is contained 
 - Providers
 - Behaviours
 - Toolkits
+- Daemons
 - 
 These are only editable if Allow custom modules = True
 Modules are python files which are imported at runtime.<br>

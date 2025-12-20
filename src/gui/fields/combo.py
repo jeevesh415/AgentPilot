@@ -36,7 +36,7 @@ class BaseCombo(QComboBox):
                 -- ORDER BY pinned DESC, ordr, name
             """
 
-        self.setFixedHeight(25)
+        self.setFixedHeight(18)
         self.setMaximumWidth(200)
         self.load()
         self.currentIndexChanged.connect(self.on_index_changed)
@@ -46,12 +46,15 @@ class BaseCombo(QComboBox):
             self.clear()
             if self.items:
                 # If items are provided, use them directly
-                if isinstance(self.items, dict):
-                    for key, value in self.items.items():
-                        self.addItem(value, key)
-                else:
-                    for item in self.items:
-                        self.addItem(item, item)
+                try:
+                    if isinstance(self.items, dict):
+                        for key, value in self.items.items():
+                            self.addItem(value, key)
+                    else:
+                        for item in self.items:
+                            self.addItem(item, item)
+                except Exception as e:
+                    raise e
             elif self.query:
                 # If a query is provided, fetch items from the database
                 results = sql.get_results(self.query)
@@ -82,21 +85,26 @@ class BaseCombo(QComboBox):
         return self.itemData(self.currentIndex())
 
     def set_value(self, key):  # todo rename
-        # items_have_keys =
-        index = self.findData(key)  # if self.items_have_keys else self.findText(key)
+        index = self.findData(key) if self.items_have_keys else self.findText(key)
+        if index == -1:
+            # Try the opposite search method as fallback
+            index = self.findText(key) if self.items_have_keys else self.findData(key)
         if index == -1:
             last_item = self.last_item()
             if last_item:
                 # Create a new item with the missing model key and set its color to red, and set the data to the model key
-                item = QStandardItem(key)
+                item = QStandardItem(str(key))
                 item.setForeground(QColor('red'))
                 if self.items_have_keys:
                     item.setData(key, Qt.UserRole)
                 self.model().appendRow(item)
                 self.setCurrentIndex(self.model().rowCount() - 1)
                 return
-        # with block_signals(self):  # todo
         self.setCurrentIndex(index)
+
+    def addItem(self, *args):
+        args = [str(arg) for arg in args]
+        super().addItem(*args)
 
     # def addItem(self, *args):
     #     with block_signals(self):

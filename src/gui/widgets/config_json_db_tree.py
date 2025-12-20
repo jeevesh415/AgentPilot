@@ -56,8 +56,8 @@ class ConfigJsonDBTree(ConfigWidget):
 
         tree_layout = QVBoxLayout()
         self.tree_buttons = TreeButtons(parent=self)
-        self.tree_buttons.btn_add.clicked.connect(self.add_item)
-        self.tree_buttons.btn_del.clicked.connect(self.delete_item)
+        # self.tree_buttons.btn_add.clicked.connect(self.add_item)
+        # self.tree_buttons.btn_del.clicked.connect(self.delete_item)
 
         self.tree = BaseTreeWidget(parent=self)
         if tree_height:
@@ -111,7 +111,7 @@ class ConfigJsonDBTree(ConfigWidget):
 
             for i, col_schema in enumerate(self.schema):
                 column_type = col_schema.get('type', None)
-                key = convert_to_safe_case(col_schema.get('key', col_schema['text']))
+                key = convert_to_safe_case(col_schema.get('key', col_schema['text'].lower()))
                 # default = col_schema.get('default', '')
                 # val = row_tuple[i]
 
@@ -189,6 +189,9 @@ class ConfigJsonDBTree(ConfigWidget):
 
         self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(item))
         self.update_config()
+
+    def add_folder(self, name=None, parent_folder=None):
+        pass
 
     @override
     def update_config(self):

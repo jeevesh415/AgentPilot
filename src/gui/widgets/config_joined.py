@@ -27,13 +27,14 @@ from gui.widgets.config_widget import ConfigWidget
 class ConfigJoined(ConfigWidget):
     def __init__(self, parent, **kwargs):
         super().__init__(parent=parent)
-        layout_type = kwargs.get('layout_type', 'vertical')
-        self.propagate = kwargs.get('propagate', True)
+        self.resize_inversion = kwargs.get('resize_inversion', False)
+        self.layout_type = kwargs.get('layout_type', 'vertical')
+        # self.propagate = kwargs.get('propagate', True)
         self.resizable = kwargs.get('resizable', False)
-        self.layout = CVBoxLayout(self) if layout_type == 'vertical' else CHBoxLayout(self)
+        self.layout = CVBoxLayout(self) if self.layout_type == 'vertical' else CHBoxLayout(self)
 
         if self.resizable:
-            splitter_orientation = Qt.Horizontal if layout_type == 'horizontal' else Qt.Vertical
+            splitter_orientation = Qt.Horizontal if self.layout_type == 'horizontal' else Qt.Vertical
             self.splitter = QSplitter(splitter_orientation)
             self.splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             self.splitter.setChildrenCollapsible(False)
@@ -56,8 +57,9 @@ class ConfigJoined(ConfigWidget):
 
         if self.add_stretch_to_end:
             self.layout.addStretch(1)
-        # if hasattr(self, 'after_init'):
-        self.after_init()
+        
+        if hasattr(self, 'after_init'):
+            self.after_init()
 
     @override
     def load(self):
@@ -69,7 +71,7 @@ class ConfigJoined(ConfigWidget):
     def get_config(self):
         config = {}
         for widget in self.widgets:
-            if not getattr(widget, 'propagate', True) or not hasattr(widget, 'get_config'):
+            if not getattr(widget, 'propagate_config', True) or not hasattr(widget, 'get_config'):
                 continue
             cc = widget.get_config()
             config.update(cc)

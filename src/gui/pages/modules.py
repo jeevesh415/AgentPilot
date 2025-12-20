@@ -1,4 +1,5 @@
-"""Modules Page Module.
+"""
+Modules Page Module.
 
 This module provides the modules management page for the Agent Pilot GUI interface.
 The page enables users to manage, install, and configure the various module types
@@ -16,14 +17,16 @@ Key Features:
 
 The page provides comprehensive module lifecycle management, enabling users to
 extend Agent Pilot's capabilities through custom and third-party modules.
-"""  # unchecked
+"""
 
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QLabel, QWidget, QSizePolicy, QMessageBox
 
+from gui import system
 from gui.widgets.config_widget import ConfigWidget
 from gui.widgets.config_db_tree import ConfigDBTree
 from gui.widgets.config_fields import ConfigFields
+from gui.widgets.config_joined import ConfigJoined
 from gui.util import IconButton, find_main_widget, CHBoxLayout, CVBoxLayout
 from utils import sql
 from utils.helpers import display_message, set_module_type
@@ -33,7 +36,7 @@ from utils.helpers import display_message, set_module_type
 class Page_Module_Settings(ConfigDBTree):
     display_name = 'Modules'
     icon_path = ":/resources/icon-jigsaw.png"
-    page_type = 'any'  # either 'settings', 'main', or 'any' ('any' means it can be pinned between main and settings)
+    page_type = 'main'  # either 'settings', 'main', or 'any' ('any' means it can be pinned between main and settings)
 
     def __init__(self, parent):
         super().__init__(
@@ -48,7 +51,7 @@ class Page_Module_Settings(ConfigDBTree):
                     -- COALESCE(json_extract(config, '$.enabled'), 1),
                     folder_id
                 FROM modules
-                ORDER BY pinned DESC, ordr, name""",
+                ORDER BY pinned DESC, ordr, name COLLATE NOCASE""",
             schema=[
                 {
                     'text': 'Modules',
@@ -81,32 +84,16 @@ class Page_Module_Settings(ConfigDBTree):
         )
         self.splitter.setSizes([400, 1000])
     
-    # def on_edited(self):
-    #     config = self.get_config()
-    #     hash = hash_config(config, exclude=['auto_load'])
+    def get_module_file_path(self, item_id, module_name=None):  # folder_name, module_name, module_config):
+        is_baked = sql.get_scalar('SELECT baked FROM modules WHERE id = ?', (item_id,)) == 1
+        if not is_baked:
+            return None
 
-    #     item_id = self.get_selected_item_id()
-    #     if not item_id:
-    #         return
-        
-    #     is_baked = sql.get_scalar('SELECT baked FROM modules WHERE id = ?', (item_id,)) == 1
-    #     if is_baked:
-    #         self.bake_item()
-
-    def bake_item(self, force=False):
-        item_id = self.get_selected_item_id()
-        if not item_id:
-            return
-
-        # from system import manager
-        # import json
-        # import os
-        from pathlib import Path
-        
         # Get module data from database
         module_config = sql.get_scalar('SELECT config FROM modules WHERE id = ?', (item_id,), load_json=True)
-        module_name = sql.get_scalar('SELECT name FROM modules WHERE id = ?', (item_id,))
         folder_id = sql.get_scalar('SELECT folder_id FROM modules WHERE id = ?', (item_id,))
+        if module_name is None:
+            module_name = sql.get_scalar('SELECT name FROM modules WHERE id = ?', (item_id,))
         
         if not module_config or not module_name:
             print(f"Module data not found for id {item_id}")
@@ -116,7 +103,7 @@ class Page_Module_Settings(ConfigDBTree):
         folder_name = None
         if folder_id:
             folder_name = sql.get_scalar('SELECT name FROM folders WHERE id = ?', (folder_id,))
-        
+
         if not folder_name:
             print(f"Folder not found for module {module_name}")
             return
@@ -126,40 +113,50 @@ class Page_Module_Settings(ConfigDBTree):
         if not source_code:
             print(f"No source code found in module {module_name}")
             return
-            
-        # # Determine the file path based on module type
-        # type_locations = {
-        #     'managers': 'src/system',
-        #     'pages': 'src/gui/pages', 
-        #     'widgets': 'src/gui/widgets',
-        #     'environments': 'src/system/environments',
-        #     'providers': 'src/system/providers',
-        #     'members': 'src/members',
-        #     'bubbles': 'src/gui/bubbles',
-        #     'behaviors': 'src/system/behaviors',
-        #     'fields': 'src/gui/fields',
-        # }
-        
-        base_path = self.manager.type_locations.get(folder_name.lower())
+
+        type_controller = self.manager.type_controllers.get(folder_name.lower())
+        base_path = getattr(type_controller, 'load_to_path', None)
         if not base_path:
-            display_message(self,
+            display_message(
                 message=f"Unknown module type: {folder_name}",
                 icon=QMessageBox.Warning,
             )
             return
+        
+        # Join the description and source code
+        description = module_config.get('description', '')
+        if description != '':
+            source_code = f'"""\n{description}\n"""\n\n{source_code}'
             
         # Construct file path
+        from pathlib import Path
+        
+        base_path = f"src/{base_path.replace('.', '/')}"
         file_path = Path(base_path) / f"{module_name.lower()}.py"
+
+        return file_path
+    
+    def unbake_item(self):
+        item_id = self.get_selected_item_id()
+        if not item_id:
+            return
+        sql.execute('UPDATE modules SET baked = 0 WHERE id = ?', (item_id,))
+        self.load()
+
+    def bake_item(self, force=False):
+        item_id = self.get_selected_item_id()
+        if not item_id:
+            return
+
+        # # Get module data from database
+        module_name = sql.get_scalar('SELECT name FROM modules WHERE id = ?', (item_id,))
+        module_config = sql.get_scalar('SELECT config FROM modules WHERE id = ?', (item_id,), load_json=True)
+        
+        source_code = module_config.get('data', '')
+        file_path = self.get_module_file_path(item_id)
         
         # Check if file exists and ask for confirmation if not forcing
         if file_path.exists():
-
-            # # Read current source code and compare to current config
-            # current_source_code = file_path.read_text(encoding='utf-8')
-            # if current_source_code == source_code:
-            #     print(f"Source code for {module_name} is the same as the current config, skipping.")
-            #     return
-            
             if not force:
                 retval = QMessageBox.question(
                     self,
@@ -182,24 +179,41 @@ class Page_Module_Settings(ConfigDBTree):
             sql.execute('UPDATE modules SET baked = 1 WHERE id = ?', (item_id,))
             
             if not force:
-                display_message(self,
+                display_message(
                     message=f"Successfully baked module {module_name} to {file_path}",
                     icon=QMessageBox.Information,
                 )
             
         except Exception as e:
-            display_message(self,
+            display_message(
                 message=f"Error baking module {module_name}: {e}",
                 icon=QMessageBox.Critical,
             )
+    
+    def on_item_selected(self):
+        super().on_item_selected()
 
+        item_id = self.get_selected_item_id()
+        if not item_id:
+            return
+        
+        folder_id = sql.get_scalar('SELECT folder_id FROM modules WHERE id = ?', (item_id,))
+        if not folder_id:
+            return
+        folder_name = sql.get_scalar('SELECT name FROM folders WHERE id = ?', (folder_id,))
+        if not folder_name:
+            return
+        controller = self.manager.type_controllers.get(folder_name.lower())
+        if not controller:
+            return
+        
     # def extra_data(self):
-    #     from system import manager
+    #     from gui import system
     #     extra_data = []
-    #     module_types = {name: controller for name, controller in manager.modules.type_controllers.items() if name is not None}
+    #     module_types = {name: controller for name, controller in system.manager.modules.type_controllers.items() if name is not None}
     #     for module_type in module_types:
     #         type_folder_id = get_module_type_folder_id(module_type)
-    #         module_type_modules = manager.modules.get_modules_in_folder(
+    #         module_type_modules = system.manager.modules.get_modules_in_folder(
     #             module_type=module_type,
     #             fetch_keys=('name', 'class',)
     #         )
@@ -212,12 +226,12 @@ class Page_Module_Settings(ConfigDBTree):
     #     return extra_data
 
     # # def extra_data(self):
-    # #     from system import manager
+    # #     from gui import system
     # #     extra_data = []
-    # #     module_types = {name: controller for name, controller in manager.modules.type_controllers.items() if name is not None}
+    # #     module_types = {name: controller for name, controller in system.manager.modules.type_controllers.items() if name is not None}
     # #     for module_type in module_types:
     # #         type_folder_id = get_module_type_folder_id(module_type)
-    # #         module_type_modules = manager.modules.get_modules_in_folder(
+    # #         module_type_modules = system.manager.modules.get_modules_in_folder(
     # #             module_type=module_type,
     # #             fetch_keys=('name', 'class',)
     # #         )
@@ -233,7 +247,7 @@ class Page_Module_Settings(ConfigDBTree):
     # #                 module_name=module_name,
     # #                 folder_name=module_type,
     # #             )
-    # #     from system import manager
+    # #     from gui import system
     # #     import inspect
 
     # #     # Get the module name and folder (type) from the DB
@@ -246,7 +260,7 @@ class Page_Module_Settings(ConfigDBTree):
     # #         return None
 
     # #     # Try to get the class from source
-    # #     module_class = manager.modules.get_module_class(folder_name, module_name)
+    # #     module_class = system.manager.modules.get_module_class(folder_name, module_name)
     # #     if not module_class:
     # #         return None
 
@@ -264,286 +278,194 @@ class Page_Module_Settings(ConfigDBTree):
     # #         print(f"Error getting inferred data for module {module_name}: {e}")
     # #         return None
 
-class Module_Config_Widget(ConfigFields):
+class Module_Config_Widget(ConfigJoined):
     def __init__(self, parent):
-        super().__init__(parent=parent)  # , layout_type='vertical', resizable=True)
-        # self.IS_DEV_MODE = True
-        self.main = find_main_widget(self)
-        self.status = 'unloaded'  # 'loaded', 'unloaded', 'modified', 'error', 'externally modified'
-        self.schema = [
-            {
-                'text': 'Avatar',
-                'key': 'icon_path',
-                'type': 'image',
-                'diameter': 30,
-                'circular': False,
-                'border': False,
-                'default': ':/resources/icon-jigsaw-solid.png',
-                'label_position': None,
-                'row_key': 0,
-            },
-            {
-                'text': 'Name',
-                'type': str,
-                'default': 'Unnamed module',
-                'stretch_x': True,
-                'text_size': 14,
-                # 'text_alignment': Qt.AlignCenter,
-                'label_position': None,
-                'transparent': True,
-                'row_key': 0,
-            },
-            {
-                'text': '',
-                'key': 'toggle_description',
-                'type': 'button_toggle',
-                # 'checkable': True,
-                'default': False,
-                'icon_path': ':/resources/icon-description.png',
-                'tooltip': 'Toggle description',
-                'label_position': None,
-                'row_key': 0,
-            },
-            {
-                'text': 'Description',
-                'type': str,
-                'default': '',
-                'num_lines': 10,
-                'stretch_x': True,
-                'stretch_y': True,
-                'transparent': True,
-                'visibility_predicate': lambda fields: fields.config.get('toggle_description', False),
-                'placeholder_text': 'Description',
-                'gen_block_folder_name': 'todo',
-                'label_position': None,
-            },
-            {
-                'text': 'Load on startup',
-                'type': bool,
-                'default': True,
-                'row_key': 1,
-            },
-            {
-                'text': 'Load && run',
-                'key': 'load_button',
-                'type': 'button',
-                'tooltip': 'Re-import the module and execute it',
-                'target': self.reimport,
-                'label_position': None,
-                'row_key': 1,
-            },
-            {
-                'text': 'Unload',
-                'key': 'unload_button',
-                'type': 'button',
-                'tooltip': 'Unload the module',
-                'target': self.unload,
-                'label_position': None,
-                'row_key': 1,
-            },
-            {
-                'text': 'Data',
-                'type': str,
-                'default': '',
-                'num_lines': 2,
-                'stretch_x': True,
-                'stretch_y': True,
-                'highlighter': 'PythonHighlighter',
-                'fold_mode': 'python',
-                'monospaced': True,
-                'gen_block_folder_name': 'page_module',
-                'label_position': None,
-            },
+        super().__init__(parent=parent)
+        self.widgets = [
+            self.Module_Config_Fields(parent=self),
         ]
-        # self.widgets = [
-        #     # self.Module_Config_Widget_2(parent=self),
-        #     self.Module_Config_Fields(parent=self),
-        #     # self.Module_Config_Fields(parent=self),
-        # ]
 
-    def after_init(self):
-        super().after_init()
+    class Module_Config_Fields(ConfigFields):
+        def __init__(self, parent):
+            super().__init__(parent=parent)
+            # self.IS_DEV_MODE = True
+            self.main = find_main_widget(self)
+            self.status = 'unloaded'  # 'loaded', 'unloaded', 'modified', 'error', 'externally modified'
+            self.schema = [
+                {
+                    'text': 'Avatar',
+                    'key': 'icon_path',
+                    'type': 'image',
+                    'diameter': 30,
+                    'circular': False,
+                    'border': False,
+                    'default': ':/resources/icon-jigsaw-solid.png',
+                    'label_position': None,
+                    'row_key': 0,
+                },
+                {
+                    'text': 'Name',
+                    'type': str,
+                    'default': 'Unnamed module',
+                    'stretch_x': True,
+                    'text_size': 14,
+                    # 'text_alignment': Qt.AlignCenter,
+                    'label_position': None,
+                    'transparent': True,
+                    'row_key': 0,
+                },
+                {
+                    'text': '',
+                    'key': 'toggle_description',
+                    'type': 'button_toggle',
+                    # 'checkable': True,
+                    'default': False,
+                    'icon_path': ':/resources/icon-description.png',
+                    'tooltip': 'Toggle description',
+                    'label_position': None,
+                    'row_key': 0,
+                },
+                {
+                    'text': 'Description',
+                    'type': str,
+                    'default': '',
+                    'num_lines': 10,
+                    'stretch_x': True,
+                    'stretch_y': True,
+                    'transparent': True,
+                    'visibility_predicate': lambda fields: fields.config.get('toggle_description', False),
+                    'placeholder_text': 'Description',
+                    'gen_block_folder_name': 'todo',
+                    'wrap_text': True,
+                    'monospaced': True,
+                    'label_position': None,
+                },
+                {
+                    'text': 'Load on startup',
+                    'type': bool,
+                    'default': True,
+                    'row_key': 1,
+                },
+                {
+                    'text': 'Load && run',
+                    'key': 'load_button',
+                    'type': 'button',
+                    'tooltip': 'Re-import the module and execute it',
+                    'target': self.reimport,
+                    'label_position': None,
+                    'row_key': 1,
+                },
+                {
+                    'text': 'Unload',
+                    'key': 'unload_button',
+                    'type': 'button',
+                    'tooltip': 'Unload the module',
+                    'target': self.unload,
+                    'label_position': None,
+                    'row_key': 1,
+                },
+                {
+                    'text': 'Data',
+                    'type': str,
+                    'default': '',
+                    'num_lines': 2,
+                    'stretch_x': True,
+                    'stretch_y': True,
+                    'highlighter': 'python',
+                    'fold_mode': 'python',
+                    'monospaced': True,
+                    'gen_block_folder_name': 'page_module',
+                    'label_position': None,
+                },
+            ]
 
-        # avatar_layout = self.icon_path.layout()
+        def after_init(self):
+            self.lbl_status = QLabel(self)
+            self.lbl_status.setProperty("class", 'dynamic_color')
+            self.lbl_status.setMaximumWidth(250)
+            self.lbl_status.move(40, 30)
+        
+        def update_config(self):
+            module_id = self.get_item_id()
+            module_metadata = sql.get_scalar('SELECT metadata FROM modules WHERE id = ?', (module_id,), load_json=True)
+            module_hash = module_metadata.get('hash')
 
-        self.lbl_status = QLabel(self)
-        self.lbl_status.setProperty("class", 'dynamic_color')
-        self.lbl_status.setMaximumWidth(250)
-        # avatar_layout.insertWidget(2, self.lbl_status)
-        # move to top right corner
-        self.lbl_status.move(40, 30)
-        # # self.la
-        # # self.splitter.setSizes([200, 700])
-    
-    def update_config(self):
-        module_id = self.get_item_id()
-        module_metadata = sql.get_scalar('SELECT metadata FROM modules WHERE id = ?', (module_id,), load_json=True)
-        module_hash = module_metadata.get('hash')
+            super().update_config()
+        
+        def get_item_id(self):
+            return self.parent.parent.get_selected_item_id()
+        
+        def load(self):
+            super().load()
 
-        super().update_config()
+            module_id = self.get_item_id()
+            # module_metadata = system.manager.modules.get_cell(module_id, 'metadata')
+            module_metadata = sql.get_scalar('SELECT metadata FROM modules WHERE id = ?', (module_id,), load_json=True)
+            if not module_metadata:
+                self.set_status('Unloaded')
+                return
 
-    def get_item_id(self):
-        return self.parent.get_selected_item_id()
-    
-    def load(self):
-        # return
-        super().load()
+            module_hash = module_metadata.get('hash')
+            is_baked = sql.get_scalar('SELECT baked FROM modules WHERE id = ?', (module_id,)) == 1
+            is_loaded = False  # module_id in system.manager.modules.loaded_module_hashes
+            if is_baked:
+                baked_hash = sql.get_scalar('SELECT uuid FROM modules WHERE id = ?', (module_id,))
 
-        # from system import manager
-        module_id = self.get_item_id()
-        # module_metadata = manager.modules.get_cell(module_id, 'metadata')
-        module_metadata = sql.get_scalar('SELECT metadata FROM modules WHERE id = ?', (module_id,), load_json=True)
-        if not module_metadata:
-            self.set_status('Unloaded')
-            return
+                self.set_status('Baked')
+                
+            elif is_loaded:
+                loaded_hash = system.manager.modules.loaded_module_hashes[module_id]
+                is_modified = module_hash != loaded_hash
+                if is_modified:
+                    self.set_status('Modified')
+                else:
+                    self.set_status('Loaded')
+            else:
+                self.set_status('Unloaded')
 
-        module_hash = module_metadata.get('hash')
-        is_baked = sql.get_scalar('SELECT baked FROM modules WHERE id = ?', (module_id,)) == 1
-        is_loaded = False  # module_id in manager.modules.loaded_module_hashes
-        if is_baked:
-            baked_hash = sql.get_scalar('SELECT uuid FROM modules WHERE id = ?', (module_id,))
+        def set_status(self, status, text=None):
+            if text is None:
+                text = status
+            status_color_classes = {
+                'Loaded': '#6aab73',
+                'Unloaded': '#B94343',
+                'Baked': '#438BB9',
+                'Modified': '#438BB9',
+                'Error': '#B94343',
+                'Externally Modified': '#B94343',
+            }
+            can_reimport = status in ['Modified', 'Unloaded']
+            self.load_button.setVisible(can_reimport)
+            self.unload_button.setVisible(status == 'Loaded')
+            self.lbl_status.setText(text)
+            self.lbl_status.setStyleSheet(f"color: {status_color_classes[status]};")
 
-            self.set_status('Baked')
-            
-        elif is_loaded:
-            loaded_hash = manager.modules.loaded_module_hashes[module_id]
-            is_modified = module_hash != loaded_hash
-            if is_modified:
-                self.set_status('Modified')
+        def reimport(self):
+            module_id = self.get_item_id()
+            if not module_id:
+                return
+
+            module = system.manager.modules.load_module(module_id)
+            if isinstance(module, Exception):
+                self.set_status('Error', f"Error: {str(module)}")
             else:
                 self.set_status('Loaded')
-        else:
+                if system.manager.modules.get_cell(module_id, 'type') == 'pages':
+                    main = find_main_widget(self)
+                    main.main_pages.build_schema()
+                    # main.page_settings.build_schema()
+
+        def unload(self):
+            module_id = self.get_item_id()
+            if not module_id:
+                return
+
+            system.manager.modules.unload_module(module_id)
             self.set_status('Unloaded')
-
-    def set_status(self, status, text=None):
-        if text is None:
-            text = status
-        status_color_classes = {
-            'Loaded': '#6aab73',
-            'Unloaded': '#B94343',
-            'Baked': '#438BB9',
-            'Modified': '#438BB9',
-            'Error': '#B94343',
-            'Externally Modified': '#B94343',
-        }
-        can_reimport = status in ['Modified', 'Unloaded']
-        self.load_button.setVisible(can_reimport)
-        self.unload_button.setVisible(status == 'Loaded')
-        self.lbl_status.setText(text)
-        self.lbl_status.setStyleSheet(f"color: {status_color_classes[status]};")
-
-    def reimport(self):
-        module_id = self.get_item_id()
-        if not module_id:
-            return
-        from system import manager
-
-        module = manager.modules.load_module(module_id)
-        if isinstance(module, Exception):
-            self.set_status('Error', f"Error: {str(module)}")
-        else:
-            self.set_status('Loaded')
-            # if manager.modules.module_folders[module_id] == 'pages':
-            if manager.modules.get_cell(module_id, 'type') == 'pages':
+            if system.manager.modules.get_cell(module_id, 'type') == 'pages':
                 main = find_main_widget(self)
                 main.main_pages.build_schema()
                 # main.page_settings.build_schema()
-
-    def unload(self):
-        module_id = self.get_item_id()
-        if not module_id:
-            return
-        from system import manager
-
-        manager.modules.unload_module(module_id)
-        self.set_status('Unloaded')
-        # if manager.modules.module_folders[module_id] == 'pages':
-        if manager.modules.get_cell(module_id, 'type') == 'pages':
-            main = find_main_widget(self)
-            main.main_pages.build_schema()
-            # main.page_settings.build_schema()
-
-    # class Module_Config_Widget_2(ConfigJoined):
-    #     def __init__(self, parent):
-    #         super().__init__(parent=parent, layout_type='vertical')
-    #         self.widgets = [
-    #             self.Module_Config_Buttons(parent=self),
-    #             self.Module_Config_Description(parent=self),
-    #         ]
-    #
-    #     class Module_Config_Description(ConfigFields):
-    #         def __init__(self, parent):
-    #             super().__init__(parent=parent)
-    #             self.schema = [
-    #                 {
-    #                     'text': 'Description',
-    #                     'type': str,
-    #                     'default': '',
-    #                     'num_lines': 10,
-    #                     'stretch_x': True,
-    #                     'stretch_y': True,
-    #                     'placeholder_text': 'Description',
-    #                     'gen_block_folder_name': 'todo',
-    #                     'label_position': None,
-    #                 },
-    #             ]
-    #
-    #     class Module_Config_Buttons(ConfigWidget):
-    #         def __init__(self, parent):
-    #             super().__init__(parent=parent)
-    #             self.parent = parent
-    #             self.layout = CHBoxLayout(self)
-    #             self.layout.setContentsMargins(0, 2, 0, 2)
-    #             self.icon_size = 22
-    #             self.setFixedHeight(self.icon_size + 6)
-    #
-    #             # Label for the status of the module
-    #             self.lbl_status = QLabel(parent=self)
-    #             self.lbl_status.setProperty("class", 'dynamic_color')
-    #             self.lbl_status.setMaximumWidth(450)
-    #             self.lbl_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
-    #
-    #             self.btn_reimport = IconButton(
-    #                 parent=self,
-    #                 icon_path=':/resources/icon-load.png',
-    #                 text='Load && run',
-    #                 tooltip='Re-import the module and execute it',
-    #                 target=self.reimport,
-    #                 size=self.icon_size,
-    #             )
-    #
-    #             self.btn_unload = IconButton(
-    #                 parent=self,
-    #                 icon_path=':/resources/icon-unload.png',
-    #                 text='Unload',
-    #                 tooltip='Unload the module',
-    #                 target=self.unload,
-    #                 size=self.icon_size,
-    #             )
-    #
-    #             self.btn_toggle_description = ToggleIconButton(
-    #                 parent=self,
-    #                 icon_path=':/resources/icon-description.png',
-    #                 tooltip='Toggle description',
-    #                 size=self.icon_size,
-    #             )
-    #
-    #             self.layout.addWidget(self.lbl_status)
-    #             self.layout.addWidget(self.btn_reimport)
-    #             self.layout.addWidget(self.btn_unload)
-    #             self.layout.addStretch(1)
-    #             self.layout.addWidget(self.btn_toggle_description)
-    #
-    #         # def get_item_id(self):  # todo clean
-    #         #     item_id = find_ancestor_tree_item_id(self.parent.parent)
-    #         #     if not item_id:
-    #         #         return self.parent.module_id
-    #         #     return item_id
-
-    # class Module_Config_Fields(ConfigFields):
-    #     def __init__(self, parent):
-    #         super().__init__(parent=parent)
-    #         # self.conf_namespace = 'source'
 
 
 class PageEditor(ConfigWidget):
@@ -578,8 +500,7 @@ class PageEditor(ConfigWidget):
 
         self.setFixedHeight(self.main.height())
 
-        from system import manager
-        module_manager = manager.modules
+        module_manager = system.manager.modules
         page_name = module_manager.module_names.get(module_id, None)
         if not page_name:
             return

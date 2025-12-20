@@ -7,7 +7,7 @@ navigation and layout management.
 
 Key Features:
 - Multi-page tabbed configuration interface
-- Dynamic page loading and configuration managemen
+- Dynamic page loading and configuration management
 - Consistent navigation and layout across pages
 - Integration with the configuration system
 
@@ -16,15 +16,14 @@ The ConfigPages widget is used for components that require multiple pages.
 
 import json
 
-from PySide6.QtCore import QSize
 from PySide6.QtWidgets import *
 from PySide6.QtGui import QFont, Qt, QCursor
 from typing_extensions import override
 
 from utils.helpers import block_signals
 
-from gui.util import find_attribute, find_main_widget, clear_layout, IconButton, CVBoxLayout, CHBoxLayout, \
-    ToggleIconButton, get_selected_pages, set_selected_pages
+from gui import system
+from gui.util import find_attribute, find_main_widget, IconButton, CVBoxLayout, CHBoxLayout, ToggleIconButton, get_selected_pages
 from utils import sql
 
 from gui.widgets.config_collection import ConfigCollection
@@ -53,12 +52,12 @@ class ConfigPages(ConfigCollection):
         right_to_left=False,
         bottom_to_top=False,
         button_kwargs=None,
-        # default_page=None,
+        default_page=None,
     ):
         super().__init__(parent=parent)
         self.layout = CVBoxLayout(self)
         self.content = QStackedWidget(self)
-        # self.default_page = default_page
+        self.default_page = default_page
         self.align_left = align_left
         self.right_to_left = right_to_left
         self.bottom_to_top = bottom_to_top
@@ -103,10 +102,10 @@ class ConfigPages(ConfigCollection):
                 if hasattr(page, 'build_schema'):
                     page.build_schema()
 
-        #     # if self.default_page:
-        #     #     default_page = self.pages.get(self.default_page)
-        #     #     page_index = self.content.indexOf(default_page)
-        #     #     self.content.setCurrentIndex(page_index)
+            # if self.default_page:
+            #     default_page = self.pages.get(self.default_page)
+            #     page_index = self.content.indexOf(default_page)
+            #     self.content.setCurrentIndex(page_index)
 
         if self.settings_sidebar is None:
             self.settings_sidebar = self.ConfigSidebarWidget(parent=self)
@@ -133,7 +132,14 @@ class ConfigPages(ConfigCollection):
         # #     pass
 
         # if hasattr(self, 'after_init'):
-        self.after_init()
+        if hasattr(self, 'after_init'):
+            self.after_init()
+    
+    def after_init(self):
+        if self.default_page:
+            default_page = self.pages.get(self.default_page)
+            page_index = self.content.indexOf(default_page)
+            self.content.setCurrentIndex(page_index)
 
     def get(self, page_name, default=None):
         """Get a page by its name."""
@@ -146,12 +152,20 @@ class ConfigPages(ConfigCollection):
             if hasattr(page, 'load'):
                 page.load()
 
+    def goto_page(self, page_name):
+        is_current = self.content.currentWidget() == self.pages[page_name]
+        if is_current:
+            return
+        click_button = self.settings_sidebar.page_buttons.get(page_name)
+        if click_button:
+            click_button.click()
+
     def on_current_changed(self, _):
         self.load()
         self.update_breadcrumbs()
 
     class ConfigSidebarWidget(QWidget):
-        def __init__(self, parent):  # , width=None):
+        def __init__(self, parent):
             super().__init__(parent=parent)
 
             self.parent = parent
@@ -171,17 +185,24 @@ class ConfigPages(ConfigCollection):
             self.load()
 
         def load(self):
-            is_main_pages = self.parent.__class__.__name__ == 'MainPages'
-
             # Update or create new_page_btn
-            if not hasattr(self, 'new_page_btn') or self.new_page_btn is None:
+            size = self.button_kwargs.get('icon_size', 25)
+            if getattr(self, 'new_page_btn', None) is None:
                 self.new_page_btn = IconButton(
                     parent=self,
-                    icon_path=':/resources/icon-new-large.png',
-                    size=25,
+                    icon_path=None,
+                    hover_icon_path=':/resources/icon-new-large.png',
+                    size=size,
                 )
                 self.new_page_btn.setMinimumWidth(25)
                 self.new_page_btn.clicked.connect(self.parent.add_page)
+
+                if self.button_type == 'text':
+                    self.new_page_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+                    self.new_page_btn.setMaximumSize(16777215, size)  # Remove width constraint
+                    self.new_page_btn.setMinimumHeight(size)
+                else:
+                    self.new_page_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
 
             pages = self.parent.pages
             if self.parent.bottom_to_top:
@@ -207,13 +228,14 @@ class ConfigPages(ConfigCollection):
                         btn = ToggleIconButton(
                             parent=self,
                             icon_path=getattr(page, 'icon_path', ':/resources/icon-pages-large.png'),
-                            size=self.button_kwargs.get('icon_size', QSize(16, 16)),
+                            size=size,
                             tooltip=getattr(page, 'display_name', key),
                             icon_path_checked=getattr(page, 'icon_path_checked', None),
                             target_when_checked=getattr(page, 'target_when_checked', None),
                             show_checked_background=getattr(page, 'show_checked_background', True),
                             checkable=True,
                         )
+                        btn.setFixedSize(size, size)
                         btn.setCheckable(True)
                         self.page_buttons[key] = btn
                     else:
@@ -236,8 +258,9 @@ class ConfigPages(ConfigCollection):
                         btn.setText(getattr(page, 'display_name', key))
 
             # Update button group
-            if not hasattr(self, 'button_group') or self.button_group is None:
+            if self.button_group is None:
                 self.button_group = QButtonGroup(self)
+                self.button_group.buttonClicked.connect(self.on_button_clicked)
             else:
                 # Clear existing button group
                 for btn in self.button_group.buttons():
@@ -266,15 +289,14 @@ class ConfigPages(ConfigCollection):
             if not self.parent.bottom_to_top:
                 self.layout.addWidget(self.new_page_btn)
                 self.layout.addStretch(1)
-            
-            self.button_group.buttonClicked.connect(self.on_button_clicked)
 
         def show_context_menu(self, pos, button):
             menu = QMenu(self)
 
-            from system import manager
-            custom_pages = manager.modules.get_modules_in_folder('Pages', fetch_keys=('name',))
-            page_key = next(key for key, value in self.page_buttons.items() if value == button)
+            custom_pages = system.manager.modules.get_modules_in_folder('Pages', fetch_keys=('name',))
+            page_key = next((key for key, value in self.page_buttons.items() if value == button), None)
+            if page_key is None:
+                return
             is_custom_page = page_key in custom_pages
 
             pinnable_pages = [key for key, value in self.parent.pages.items()
@@ -300,7 +322,6 @@ class ConfigPages(ConfigCollection):
             menu.exec_(QCursor.pos())
 
         def toggle_page_pin(self, page_name, pinned):
-            from system import manager
             pinned_pages = sql.get_scalar("SELECT `value` FROM settings WHERE `field` = 'pinned_pages';")
             pinned_pages = set(json.loads(pinned_pages) if pinned_pages else [])
 
@@ -311,9 +332,9 @@ class ConfigPages(ConfigCollection):
             sql.execute("""UPDATE settings SET value = json(?) WHERE `field` = 'pinned_pages';""",
                         (json.dumps(list(pinned_pages)),))
 
-            manager.config.load()
-            app_config = manager.config
-            self.main.page_settings.load_config(app_config)
+            system.manager.config.load()
+            app_config = system.manager.config
+            self.main.main_pages.pages['settings'].load_config(app_config)
             # self.load()  # load this sidebar
 
         def pin_page(self, page_name):
@@ -325,10 +346,10 @@ class ConfigPages(ConfigCollection):
             is_current = current_page == pinning_page
 
             self.main.main_pages.build_schema()
-            self.main.page_settings.build_schema()
+            self.main.main_pages.pages['settings'].build_schema()
 
             if is_current:
-                self.main.main_pages.settings_sidebar.click_menu_button(page_name)
+                self.main.main_pages.goto_page(page_name)
 
         def unpin_page(self, page_name):
             """Always called from main_pages.sidebar_menu"""
@@ -340,41 +361,31 @@ class ConfigPages(ConfigCollection):
 
             # # if current page is the one being unpinned, switch to the system page, then switch to the unpinned page
             self.main.main_pages.build_schema()
-            self.main.page_settings.build_schema()
+            self.main.main_pages.pages['settings'].build_schema()
 
             if is_current:
-                self.click_menu_button('settings')
-                self.main.page_settings.settings_sidebar.click_menu_button(page_name)
-
-        def click_menu_button(self, page_name):
-            print(f"click_menu_button: {page_name}")
-            click_button = self.page_buttons.get(page_name)
-            if click_button:
-                self.on_button_clicked(click_button)
+                self.parent.goto_page('settings')
+                self.main.main_pages.pages['settings'].goto_page(page_name)
 
         def on_button_clicked(self, button):
+            button_index = self.button_group.id(button)
             current_index = self.parent.content.currentIndex()
-            current_button = self.button_group.button(current_index)
-            clicked_index = self.button_group.id(button)
             if self.parent.bottom_to_top:
                 button_group_count = self.button_group.buttons().__len__()
-                clicked_index = button_group_count - 1 - clicked_index
-
-            if current_index == clicked_index:
-                i = current_index
-                page_object = self.parent.content.widget(i)
+                button_index = button_group_count - 1 - button_index
+            
+            if button_index == current_index:
+                page_object = self.parent.content.widget(button_index)
                 checked_target = getattr(page_object, 'target_when_checked', None)
                 if checked_target:
                     if callable(checked_target):
                         checked_target()
             else:
-                button.setChecked(True)
-                button.refresh_icon()
-                if current_button:
-                    current_button.setChecked(False)
-                    current_button.refresh_icon()
-                self.parent.content.setCurrentIndex(clicked_index)
-
+                self.parent.content.setCurrentIndex(button_index)
+            
+            path = get_selected_pages(self.main.main_pages)
+            sql.execute("UPDATE settings SET value = ? WHERE `field` = 'page_path'", (json.dumps(path),))
+            
         class Settings_SideBar_Button(QPushButton):
             def __init__(self, parent, text='', text_size=13, align_left=False):
                 super().__init__()

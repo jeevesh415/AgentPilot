@@ -22,6 +22,7 @@ import json
 
 from PySide6.QtWidgets import QMessageBox, QInputDialog
 
+from gui import system
 from gui.util import CHBoxLayout, IconButton, safe_single_shot
 from gui.widgets.config_fields import ConfigFields
 from gui.widgets.config_joined import ConfigJoined
@@ -72,7 +73,7 @@ class Page_Display_Settings(ConfigJoined):
             WHERE config = ?
         """, (current_config_str,))
         if theme_exists:
-            display_message(self, 'Theme already exists', 'Error')
+            display_message('Theme already exists', 'Error')
             return
 
         theme_name, ok = QInputDialog.getText(
@@ -143,9 +144,9 @@ class Page_Display_Settings(ConfigJoined):
     class Page_Display_Themes(ConfigFields):
         def __init__(self, parent):
             super().__init__(parent=parent)
-            self.label_width = 185
+            self.auto_label_width = True
             self.margin_left = 20
-            self.propagate = False
+            self.propagate_config = False
             self.all_themes = {}
             self.schema = [
                 {
@@ -184,8 +185,6 @@ class Page_Display_Settings(ConfigJoined):
             self.theme.setCurrentIndex(0)
 
         def after_init(self):
-            super().after_init()
-
             try:
                 self.theme.currentIndexChanged.connect(self.changeTheme)
                 pass
@@ -240,11 +239,10 @@ class Page_Display_Settings(ConfigJoined):
                 """, (json.dumps(patch_dicts['roles']['code']),))
 
             page_settings = self.parent.parent
-            from system import manager
-            manager.load_manager('roles')
-            manager.load_manager('config')
+            system.manager.load_manager('roles')
+            system.manager.load_manager('config')
 
-            app_config = manager.config
+            app_config = system.manager.config
             page_settings.load_config(app_config)
             page_settings.load()
             page_settings.main.apply_stylesheet()
@@ -254,7 +252,7 @@ class Page_Display_Settings(ConfigJoined):
             super().__init__(parent=parent)
             self.parent = parent
 
-            self.label_width = 185
+            self.auto_label_width = True
             self.margin_left = 20
             self.conf_namespace = 'display'
             self.schema = [
@@ -267,6 +265,21 @@ class Page_Display_Settings(ConfigJoined):
                     'text': 'Secondary color',
                     'type': 'color_picker',
                     'default': '#ffffff',
+                },
+                {
+                    'text': 'Accent color 1',
+                    'type': 'color_picker',
+                    'default': '#438BB9',
+                },
+                {
+                    'text': 'Accent color 2',
+                    'type': 'color_picker',
+                    'default': '#6aab73',
+                },
+                {
+                    'text': 'Link color',
+                    'type': 'color_picker',
+                    'default': '#438BB9',
                 },
                 {
                     'text': 'Text color',
@@ -334,16 +347,6 @@ class Page_Display_Settings(ConfigJoined):
                     'text': 'Workflow view',
                     'type': ('Mini', 'Expanded',),
                     'default': 'Mini',
-                },
-                {
-                    'text': 'Parameter color',
-                    'type': 'color_picker',
-                    'default': '#438BB9',
-                },
-                {
-                    'text': 'Structure color',
-                    'type': 'color_picker',
-                    'default': '#6aab73',
                 },
             ]
 

@@ -20,12 +20,14 @@ It's commonly used in settings pages, agent configurations, and other multi-face
 configuration scenarios where logical grouping improves user experience.
 """
 
+import json
 from PySide6.QtWidgets import *
 from typing_extensions import override
 
+from utils import sql
 from utils.helpers import block_signals
 
-from gui.util import find_attribute, IconButton, CVBoxLayout
+from gui.util import find_attribute, IconButton, CVBoxLayout, find_main_widget, get_selected_pages
 
 from gui.widgets.config_collection import ConfigCollection
 
@@ -35,22 +37,14 @@ class ConfigTabs(ConfigCollection):
         super().__init__(parent=parent)
         self.layout = CVBoxLayout(self)
         self.content = QTabWidget(self)
+        self.pages = kwargs.get('pages', {})
         self.new_page_btn = None
         # self.user_editable = True
         self.content.currentChanged.connect(self.on_current_changed)
         hide_tab_bar = kwargs.get('hide_tab_bar', False)
         if hide_tab_bar:
             self.content.tabBar().hide()
-
-    @override
-    def build_schema(self):
-        """Build the widgets of all tabs from `self.tabs`"""
-        with block_signals(self):
-            for tab_name, tab in self.pages.items():
-                if hasattr(tab, 'build_schema'):
-                    tab.build_schema()
-                self.content.addTab(tab, tab_name)
-
+        
         self.layout.addWidget(self.content)
 
         self.new_page_btn = IconButton(
@@ -58,12 +52,31 @@ class ConfigTabs(ConfigCollection):
             icon_path=':/resources/icon-new-large.png',
             size=25,
         )
-        if not find_attribute(self, 'user_editing'):
-            self.new_page_btn.hide()
         self.new_page_btn.setMinimumWidth(25)
         self.new_page_btn.clicked.connect(self.add_page)
 
+    @override
+    def build_schema(self):
+        """Build the widgets of all tabs from `self.tabs`"""
+        # remove all tabs
+        for i in reversed(range(self.content.count())):
+            widget = self.content.widget(i)
+            self.content.removeTab(i)
+            # widget.deleteLater()
+        
+        # build all tabs
+        with block_signals(self):
+            for tab_name, tab in self.pages.items():
+                if hasattr(tab, 'build_schema'):
+                    tab.build_schema()
+                self.content.addTab(tab, tab_name)
+
+        if not find_attribute(self, 'user_editing'):
+            self.new_page_btn.hide()
         self.recalculate_new_page_btn_position()
+
+        if hasattr(self, 'after_init'):
+            self.after_init()
 
     @override
     def load(self):
@@ -73,6 +86,10 @@ class ConfigTabs(ConfigCollection):
     def on_current_changed(self, _):
         self.load()
         self.update_breadcrumbs()
+        main = find_main_widget(self)
+        path = get_selected_pages(main.main_pages)
+        sql.execute("UPDATE settings SET value = ? WHERE `field` = 'page_path'", (json.dumps(path),))
+        
 
     # def show_tab_context_menu(self, pos):
     #     tab_index = self.content.tabBar().tabAt(pos)

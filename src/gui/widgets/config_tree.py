@@ -17,8 +17,10 @@ throughout Agent Pilot, providing consistent behavior and appearance for
 tree widgets.
 """
 
+from functools import partial
 import json
 from abc import abstractmethod
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QWidget, QSizePolicy, QSplitter, QHeaderView
 from matplotlib.cbook import silent_list
@@ -37,7 +39,8 @@ class ConfigTree(ConfigWidget):
         from gui.util import BaseTreeWidget
         self.conf_namespace = kwargs.get('conf_namespace', None)
         self.schema = kwargs.get('schema', [])
-        layout_type = kwargs.get('layout_type', 'vertical')
+        self.layout_type = kwargs.get('layout_type', 'vertical')
+        self.resize_inversion = kwargs.get('resize_inversion', False)
         tree_height = kwargs.get('tree_height', None)
         self.readonly = kwargs.get('readonly', False)
         self.filterable = kwargs.get('filterable', False)
@@ -52,20 +55,29 @@ class ConfigTree(ConfigWidget):
         self.config_widget = kwargs.get('config_widget', None)
         self.folder_key = kwargs.get('folder_key', None)
         self.folder_config_widget = kwargs.get('folder_config_widget', None)  # self.Folder_Config_Widget(parent=self))
+        self.support_item_nesting = kwargs.get('support_item_nesting', False)
+        self.has_chat = kwargs.get('has_chat', False)
 
         # patch the update_config method for the folder config widget
         if self.folder_config_widget is not None:
             self.folder_config_widget.hide()
             self.folder_config_widget.setEnabled(False)
-            self.folder_config_widget.propagate = False
+            self.folder_config_widget.propagate_config = False
             # self.folder_config_widget.save_config = self.save_folder_config
 
         self.show_tree_buttons = kwargs.get('show_tree_buttons', True)
+        extra_tree_buttons = kwargs.get('extra_tree_buttons', [])
 
         self.add_item_options = kwargs.get('add_item_options', None)
         self.del_item_options = kwargs.get('del_item_options', None)
 
+        if not self.add_item_options:
+            self.add_item_options = {'title': 'Add Item', 'prompt': 'Enter a name for the item:'}
+        if not self.del_item_options:
+            self.del_item_options = {'title': 'Delete Item', 'prompt': 'Are you sure you want to delete this item?'}
+
         self.layout = CVBoxLayout(self)
+        self.config_layout = None
 
         self.tree_container = QWidget()
         self.tree_layout = CVBoxLayout(self.tree_container)
@@ -75,7 +87,7 @@ class ConfigTree(ConfigWidget):
             self.tree_layout.addWidget(self.filter_widget)
 
         if self.show_tree_buttons:
-            self.tree_buttons = TreeButtons(parent=self, **kwargs)
+            self.tree_buttons = TreeButtons(parent=self, extra_buttons=extra_tree_buttons)
             self.tree_layout.addWidget(self.tree_buttons)
 
         self.tree = BaseTreeWidget(parent=self)
@@ -102,25 +114,33 @@ class ConfigTree(ConfigWidget):
         self.tree_layout.addWidget(self.tree)
 
         if self.config_widget is not None or self.folder_config_widget is not None:
-            splitter_orientation = Qt.Horizontal if layout_type == 'horizontal' else Qt.Vertical
+            splitter_orientation = Qt.Horizontal if self.layout_type == 'horizontal' else Qt.Vertical
             self.splitter = QSplitter(splitter_orientation)
             self.splitter.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             self.splitter.setChildrenCollapsible(False)
             self.splitter.addWidget(self.tree_container)
 
             config_container = QWidget()
-            config_layout = CVBoxLayout(config_container)
-            if self.config_widget:
-                config_layout.addWidget(self.config_widget)
-            if self.folder_config_widget:
-                config_layout.addWidget(self.folder_config_widget)
+            self.config_layout = CVBoxLayout(config_container)
+            if isinstance(self.config_widget, QWidget):  # self.config_widget:
+                self.config_layout.addWidget(self.config_widget)
+            if isinstance(self.folder_config_widget, QWidget):  # self.folder_config_widget:
+                self.config_layout.addWidget(self.folder_config_widget)
 
             self.splitter.addWidget(config_container)
             self.layout.addWidget(self.splitter)
         else:
             self.layout.addWidget(self.tree_container)
+    
+    # def set_config_widget(self, config_widget):  # todo temp helper
+    #     if self.config_widget is not None:
+    #         self.config_layout.removeWidget(self.config_widget)
+    #         self.config_widget.deleteLater()
+    #     self.config_widget = config_widget
+    #     self.config_layout.insertWidget(0, self.config_widget)
+    #     self.config_widget.build_schema()
 
-
+        
     @abstractmethod
     def load(self):
         pass
@@ -139,6 +159,9 @@ class ConfigTree(ConfigWidget):
 
     def on_folder_toggled(self, item):
         pass
+    
+    def add_folder(self, name=None, parent_folder=None):
+        pass
 
     def add_item(self):
         pass
@@ -148,6 +171,12 @@ class ConfigTree(ConfigWidget):
 
     def rename_item(self):
         pass
+
+    def toggle_filter(self):
+        is_checked = self.tree_buttons.btn_filter.isChecked()
+        if hasattr(self, 'filter_widget'):
+            self.filter_widget.setVisible(is_checked)
+        self.updateGeometry()
 
     # def save_folder_config(self):
     #     folder_id = self.tree.get_selected_folder_id()
@@ -191,7 +220,7 @@ class ConfigTree(ConfigWidget):
                     {
                         'text': 'Load to path',
                         'type': str,
-                        'default': 'src.members',
+                        'default': '',
                         'text_size': 11,
                         'width': 140,
                         'visibility_predicate': lambda fields: fields.parent.__class__.__name__ == 'Page_Module_Settings',

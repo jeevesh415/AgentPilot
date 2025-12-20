@@ -12,7 +12,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QWidget
 
 from gui.fields.combo import BaseCombo
-from gui.util import find_workflow_widget, CVBoxLayout, find_input_key
+from gui.util import find_workflow_widget, CVBoxLayout, find_input_key, get_member_settings_class
+from gui import system
 from utils.helpers import block_signals
 
 
@@ -89,21 +90,29 @@ class InputTargetComboBox(QWidget):
             target_member_config = target_member.member_config
             target_member_type = target_member_config.get('_TYPE', 'agent')
 
-            allowed_inputs = []
-            if target_member_type == 'workflow':
-                target_workflow_first_member = next(iter(sorted(target_member_config.get('members', []),
-                                                 key=lambda x: x['loc_x'])),
-                                               None)
-                if target_workflow_first_member:
-                    first_member_is_user = target_workflow_first_member['config'].get('_TYPE', 'agent') == 'user'
-                    if first_member_is_user:  # todo de-dupe
-                        allowed_inputs = ['Message']
-
-            elif target_member_type == 'agent' or target_member_type == 'user':
-                allowed_inputs = ['Message']
-
             with block_signals(self):
                 self.clear()
-                for inp in allowed_inputs:
-                    if inp not in [self.itemText(i) for i in range(self.count())]:
-                        self.addItem(inp, inp)
+                member_class = system.manager.modules.get_module_class('Members', module_name=target_member_type)
+                if member_class is None:
+                    return
+
+                member = member_class()
+                inputs = member.INPUTS
+                # pass
+
+                # allowed_inputs = []
+                # if target_member_type == 'workflow':
+                #     target_workflow_first_member = next(iter(sorted(target_member_config.get('members', []),
+                #                                     key=lambda x: x['loc_x'])),
+                #                                 None)
+                #     if target_workflow_first_member:
+                #         first_member_is_user = target_workflow_first_member['config'].get('_TYPE', 'agent') == 'user'
+                #         if first_member_is_user:  # todo de-dupe
+                #             allowed_inputs = ['Message']
+
+                # elif getattr(target_member, 'conversational', False) and target_member_type != 'user':
+                #     allowed_inputs = ['Message']
+
+                for input_type, _ in inputs.items():
+                    if input_type not in [self.itemText(i) for i in range(self.count())]:
+                        self.addItem(input_type, input_type)

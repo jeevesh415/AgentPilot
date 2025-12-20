@@ -21,10 +21,10 @@ import json
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import *
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, Qt
 
 from gui.util import save_table_config, find_breadcrumb_widget, BreadcrumbWidget, CVBoxLayout
-from utils.helpers import convert_to_safe_case
+from utils.helpers import block_signals, convert_to_safe_case
 
 from utils import sql
 
@@ -39,6 +39,7 @@ class ConfigWidget(QWidget):
         self.conf_namespace = None
         self.edit_bar = None
         self.user_editable = getattr(parent, 'user_editable', True)
+        self.propagate_config = getattr(parent, 'propagate_config', True)
 
         self.edit_bar_timer = QTimer(self)
         self.edit_bar_timer.setSingleShot(True)
@@ -47,8 +48,11 @@ class ConfigWidget(QWidget):
     def build_schema(self):
         schema = getattr(self, 'schema', None)
         tree = getattr(self, 'tree', None)
-        if schema and tree:
+        table = getattr(self, 'table', None)
+        if tree:
             tree.build_columns_from_schema(schema)
+        elif table:
+            table.build_columns_from_schema(schema)
 
         config_widget = getattr(self, 'config_widget', None)
         if config_widget:
@@ -58,10 +62,8 @@ class ConfigWidget(QWidget):
         if folder_config_widget:
             folder_config_widget.build_schema()
 
-        self.after_init()
-
-    def after_init(self):
-        pass
+        if hasattr(self, 'after_init'):
+            self.after_init()
 
     def load(self):
         pass
@@ -69,11 +71,14 @@ class ConfigWidget(QWidget):
     def load_config(self, json_config=None):
         """Loads the config dict from the root config widget"""
         from gui.widgets.config_db_tree import ConfigDBTree
-        from gui.widgets.config_pages import ConfigPages
-        from gui.widgets.config_tabs import ConfigTabs
-        from gui.widgets.config_joined import ConfigJoined
+        # from gui.widgets.config_pages import ConfigPages
+        # from gui.widgets.config_tabs import ConfigTabs
+        # from gui.widgets.config_joined import ConfigJoined
 
-        if self.__class__.__name__ == 'Module_Config_Widget':
+        if self.__class__.__name__ == 'Block_Workflow_Settings':
+            pass
+
+        if self.__class__.__name__ == 'Asset_Trades_Widget':
             pass
 
         if hasattr(self, 'data_source'):
@@ -105,7 +110,7 @@ class ConfigWidget(QWidget):
             parent_config = getattr(self.parent, 'config', {})
 
             if self.conf_namespace is None and not isinstance(self, ConfigDBTree):
-                self.config = parent_config
+                self.config = parent_config.copy()
             else:
                 self.config = {k: v for k, v in parent_config.items() if k.startswith(f'{self.conf_namespace}.')}
 
@@ -113,6 +118,7 @@ class ConfigWidget(QWidget):
         #     self.member_config_widget.load(temp_only_config=True)
         if getattr(self, 'config_widget', None):
             self.config_widget.load_config()
+            
         if hasattr(self, 'widgets'):  # isinstance(self, ConfigJoined):
             widgets = getattr(self, 'widgets', [])
             for widget in widgets:
@@ -121,7 +127,7 @@ class ConfigWidget(QWidget):
         elif hasattr(self, 'pages'): #isinstance(self, ConfigTabs) or isinstance(self, ConfigPages):
             pages = getattr(self, 'pages', {})
             for pn, page in pages.items():
-                if not getattr(page, 'propagate', True) or not hasattr(page, 'load_config'):
+                if not getattr(page, 'propagate_config', True) or not hasattr(page, 'load_config'):
                     continue
 
                 page.load_config()
@@ -173,6 +179,10 @@ class ConfigWidget(QWidget):
             pass
 
         if hasattr(self, 'tree'):
+            sel_item = self.tree.selectedItems()[0] if self.tree.selectedItems() else None
+            if not sel_item:
+                return config
+                
             from gui.widgets.config_db_tree import ConfigDBTree
             # from gui.widgets.config_json_tree import ConfigJsonTree
             for item in self.schema:
@@ -185,9 +195,13 @@ class ConfigWidget(QWidget):
                 #     if not is_table_field:
                 #         continue
 
-                key = convert_to_safe_case(item.get('key', item['text']))
+                key = convert_to_safe_case(item.get('key', item['text'].lower()))
                 indx = self.schema.index(item)
-                val = self.tree.get_column_value(indx)
+                item_widget = self.tree.itemWidget(sel_item, indx)
+                if item_widget:
+                    val = item_widget.get_value()
+                else:
+                    val = self.tree.get_column_value(indx)
                 # if item['type'] == bool:
                 #     val = bool(val)
                 config[key] = val
@@ -198,7 +212,7 @@ class ConfigWidget(QWidget):
         """Bubble update config dict to the root config widget"""
         if hasattr(self, 'save_config'):
             self.save_config()
-        if hasattr(self.parent, 'update_config') and getattr(self, 'propagate', True):
+        if hasattr(self.parent, 'update_config') and getattr(self, 'propagate_config', True):
             self.parent.update_config()
 
     def save_config(self):
@@ -227,7 +241,7 @@ class ConfigWidget(QWidget):
             item_id=item_id,
             key_field=data_column,
             value=json_config
-        )
+        )  # todo, use?
         self.load_config(config)
 
     def update_breadcrumbs(self):
@@ -240,7 +254,19 @@ class ConfigWidget(QWidget):
         layout = getattr(self, 'layout', None)
         if not layout or callable(layout):  # no layout is set
             self.layout = CVBoxLayout(self)
+        elif isinstance(layout, QHBoxLayout):
+            # Wrap the horizontal layout inside a vertical layout
+            old_layout = layout
+            self.layout = None  
+            v_layout = CVBoxLayout()
 
+            container_widget = QWidget()
+            container_widget.setLayout(old_layout)
+            v_layout.addWidget(container_widget)
+
+            self.setLayout(v_layout)
+            self.layout = v_layout
+        
         display_name = getattr(self, 'display_name', self.__class__.__name__)
         self.breadcrumb_widget = BreadcrumbWidget(parent=self, root_title=display_name)
         self.layout.insertWidget(0, self.breadcrumb_widget)
@@ -261,18 +287,64 @@ class ConfigWidget(QWidget):
             self.default_schema = schema
         self.build_schema()
 
-    def enterEvent(self, event):
-        from gui.util import find_attribute
-        if find_attribute(self, 'user_editing', False):
-            self.toggle_edit_bar(True)
-
-    def leaveEvent(self, event):
-        widget_under_mouse = QApplication.widgetAt(QCursor.pos())
-        if self.edit_bar and (widget_under_mouse is self.edit_bar or
-                              self.isAncestorOf(widget_under_mouse)):
+    def toggle_config_widget(self, config_type):
+        config_widgets = [
+            'config_widget',
+            'folder_config_widget',
+        ]
+        type_map = {
+            'item': 'config_widget',
+            'folder': 'folder_config_widget',
+        }
+        for w in config_widgets:
+            if hasattr(self, w):
+                widget = getattr(self, w)
+                if widget:
+                    widget.setEnabled(False)
+                    widget.setVisible(False)
+        
+        widget_name = type_map.get(config_type, None)
+        if not widget_name:
             return
 
-        self.toggle_edit_bar(False)
+        widget = getattr(self, widget_name)
+        if widget:
+            widget.setEnabled(True)
+            widget.setVisible(True)
+
+    # def enterEvent(self, event):
+    #     from gui.util import find_attribute
+    #     if find_attribute(self, 'user_editing', False):
+    #         self.toggle_edit_bar(True)
+
+    # def leaveEvent(self, event):
+    #     widget_under_mouse = QApplication.widgetAt(QCursor.pos())
+    #     if self.edit_bar and (widget_under_mouse is self.edit_bar or
+    #                           self.isAncestorOf(widget_under_mouse)):
+    #         return
+
+    #     self.toggle_edit_bar(False)
+    
+    def resizeEvent(self, event):
+        super().resizeEvent(event)  # Temporarily disabled to break resize loop
+        pass
+        # layout_type = getattr(self, 'layout_type', None)
+        # splitter = getattr(self, 'splitter', None)
+        # resize_inversion = getattr(self, 'resize_inversion', False)
+
+        # if not layout_type or not splitter or not resize_inversion:
+        #     return
+        
+        # is_portrait = event.size().width() < event.size().height()
+        
+        # if is_portrait:
+        #     orientation = Qt.Horizontal if layout_type == 'horizontal' else Qt.Vertical
+        # else:
+        #     orientation = Qt.Vertical if layout_type == 'horizontal' else Qt.Horizontal
+        
+        # if self.splitter.orientation() != orientation:
+        #     with block_signals(self.splitter):
+        #         self.splitter.setOrientation(orientation)
 
     def get_edit_bar(self):
         edit_bar = getattr(self, 'edit_bar', None)
@@ -317,21 +389,21 @@ class ConfigWidget(QWidget):
         for btn in self.findChildren(OptionsButton):
             btn.setVisible(state)
 
-    def toggle_edit_bar(self, state):
-        self.edit_bar_timer.stop()
-        if state:
-            from gui.util import find_attribute
-            user_editing = find_attribute(self, 'user_editing', False)
-            user_editable = find_attribute(self, 'user_editable', False)
-            if not user_editing or not user_editable:
-                return
-            if not self.edit_bar:
-                from gui.util import EditBar
-                self.edit_bar = EditBar(self)
-            self.edit_bar_timer.start(500)
-        else:
-            if self.edit_bar:
-                self.edit_bar.hide()
+    # def toggle_edit_bar(self, state):
+    #     self.edit_bar_timer.stop()
+    #     if state:
+    #         from gui.util import find_attribute
+    #         user_editing = find_attribute(self, 'user_editing', False)
+    #         user_editable = find_attribute(self, 'user_editable', False)
+    #         if not user_editing or not user_editable:
+    #             return
+    #         if not self.edit_bar:
+    #             from gui.util import EditBar
+    #             self.edit_bar = EditBar(self)
+    #         self.edit_bar_timer.start(500)
+    #     else:
+    #         if self.edit_bar:
+    #             self.edit_bar.hide()
 
     def edit_bar_delayed_show(self):
         if self.edit_bar:
@@ -357,3 +429,10 @@ class ConfigWidget(QWidget):
                 edit_bar.show()
                 break
             parent = getattr(parent, 'parent', None)
+    
+    def closeEvent(self, event):
+        """Clean up database connections on close"""
+        if hasattr(self, 'db_connector'):
+            if hasattr(self.db_connector, 'disconnect'):
+                self.db_connector.disconnect()
+        event.accept()

@@ -11,6 +11,7 @@ during environment operations.
 
 from PySide6.QtWidgets import QMessageBox, QInputDialog
 
+from gui import system
 from gui.fields.combo import BaseCombo
 from gui.util import CHBoxLayout, IconButton
 from utils.helpers import display_message_box, block_signals, display_message
@@ -56,8 +57,7 @@ class VenvComboBox(BaseCombo):
             if ok != QMessageBox.Yes:
                 return
 
-            from system import manager
-            manager.venvs.delete(self.parent.current_key)
+            system.manager.venvs.delete(self.parent.current_key)
             self.parent.load()
             self.parent.reset_index()
 
@@ -79,10 +79,9 @@ class VenvComboBox(BaseCombo):
         super().mouseMoveEvent(event)
 
     def load(self):
-        from system import manager
         with block_signals(self):
             self.clear()
-            for venv_name, venv in manager.venvs:
+            for venv_name, venv in system.manager.venvs:
                 item_user_data = f"{venv_name} ({venv.path})"
                 self.addItem(item_user_data, venv_name)
             # add create new venv option
@@ -93,7 +92,6 @@ class VenvComboBox(BaseCombo):
         self.current_key = key
 
     def on_current_index_changed(self):
-        from system import manager
         key = self.itemData(self.currentIndex())
         if key == '<NEW>':
             dlg_title, dlg_prompt = ('Enter Name', 'Enter a name for the new virtual environment')
@@ -103,13 +101,12 @@ class VenvComboBox(BaseCombo):
                 return
             if text == 'default':
                 display_message(
-                    self,
                     message='The name `default` is reserved and cannot be used.',
                     icon=QMessageBox.Warning,
                 )
                 self.reset_index()
                 return
-            manager.venvs.add(text)
+            system.manager.venvs.add(text)
             self.load()
             self.set_key(text)
         else:

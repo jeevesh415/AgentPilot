@@ -28,7 +28,7 @@ from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QLabel, QPushButton, QMessageBox
 from keyring.errors import PasswordDeleteError
 
-from gui.widgets.config_async_widget import ConfigAsyncWidget
+# from gui.widgets.config_async_widget import ConfigAsyncWidget
 from gui.widgets.config_fields import ConfigFields
 from gui.widgets.config_joined import ConfigJoined
 from gui.widgets.config_pages import ConfigPages
@@ -151,14 +151,14 @@ class Page_System_Settings(ConfigJoined):
     #             result = {"success": False, "message": f"Request failed: {str(e)}"}
     #
     #         if not result.get('success', False) or 'token' not in result:
-    #             display_message(self, 'Login failed', 'Error', QMessageBox.Warning)
+    #             display_message('Login failed', 'Error', QMessageBox.Warning)
     #             return
     #
     #         token = result['token']
     #         try:
     #             keyring.set_password("agentpilot", "user", token)
     #         except Exception as e:
-    #             display_message(self, f"Error logging in: {str(e)}", 'Error', QMessageBox.Warning)
+    #             display_message(f"Error logging in: {str(e)}", 'Error', QMessageBox.Warning)
     #
     #         self.load()
     #
@@ -168,7 +168,7 @@ class Page_System_Settings(ConfigJoined):
     #         except PasswordDeleteError:
     #             pass
     #         except Exception as e:
-    #             display_message(self, f"Error logging out: {str(e)}", 'Error', QMessageBox.Warning)
+    #             display_message(f"Error logging out: {str(e)}", 'Error', QMessageBox.Warning)
     #
     #         self.load()
 
@@ -177,7 +177,7 @@ class Page_System_Settings(ConfigJoined):
             super().__init__(parent=parent)
             self.parent = parent
             self.main = find_main_widget(self)
-            self.label_width = 145
+            self.auto_label_width = True
             self.margin_left = 20
             self.conf_namespace = 'system'
             self.schema = [
@@ -195,6 +195,12 @@ class Page_System_Settings(ConfigJoined):
                     'text': 'Telemetry',
                     'type': bool,
                     'default': True,
+                },
+                {
+                    'text': 'Backup database',
+                    'type': bool,
+                    'default': True,
+                    'tooltip': 'Save a rolling backup of the database to a file in the same directory as the application.',
                 },
                 {
                     'text': 'Always on top',
@@ -273,6 +279,7 @@ class Page_System_Settings(ConfigJoined):
                     'type': 'model',
                     'model_kind': 'CHAT',
                     'default': 'mistral/mistral-large-latest',
+                    'visibility_predicate': lambda self: self.auto_title_wgt.isChecked(),
                     'row_key': 0,
                 },
                 {
@@ -282,12 +289,11 @@ class Page_System_Settings(ConfigJoined):
                     'num_lines': 5,
                     'label_position': 'top',
                     'stretch_x': True,
+                    'visibility_predicate': lambda self: self.auto_title_wgt.isChecked(),
                 },
             ]
 
         def after_init(self):
-            super().after_init()
-
             try:
                 self.dev_mode.stateChanged.connect(lambda state: self.toggle_dev_mode(state))
                 self.always_on_top.stateChanged.connect(self.main.toggle_always_on_top)
@@ -308,9 +314,9 @@ class Page_System_Settings(ConfigJoined):
                 self.scrape_agpt_btn.clicked.connect(self.scrape_autogpt)
                 self.layout.addWidget(self.scrape_agpt_btn)
 
-                self.run_test_btn = QPushButton('Run Tutorial')
-                self.run_test_btn.clicked.connect(self.main.run_test)
-                self.layout.addWidget(self.run_test_btn)
+                # self.run_test_btn = QPushButton('Run Tutorial')
+                # self.run_test_btn.clicked.connect(self.main.run_test)
+                # self.layout.addWidget(self.run_test_btn)
             except Exception as e:
                 pass
 
@@ -319,9 +325,9 @@ class Page_System_Settings(ConfigJoined):
             if state is None and hasattr(self, 'dev_mode'):
                 state = self.dev_mode.isChecked()
 
-            self.main.page_chat.top_bar.btn_info.setVisible(state)
+            self.main.page_chat.workflow_settings.header_widget.widgets[1].btn_info.setVisible(state)
             self.reset_app_btn.setVisible(state)
-            self.run_test_btn.setVisible(state)
+            # self.run_test_btn.setVisible(state)
 
             for config_pages in self.main.findChildren(ConfigPages):
                 for page_name, page in config_pages.pages.items():

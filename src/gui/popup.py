@@ -8,6 +8,7 @@ from gui.widgets.config_json_tree import ConfigJsonTree
 from gui.widgets.config_tabs import ConfigTabs
 
 from utils.helpers import convert_model_json_to_obj
+from gui import system
 
 
 class PopupMember(ConfigFields):
@@ -20,10 +21,9 @@ class PopupMember(ConfigFields):
         self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
         self.setFixedWidth(350)
 
-        self.label_width = 175
+        self.auto_label_width = True
 
-        from system import manager
-        member_class = manager.modules.get_module_class(
+        member_class = system.manager.modules.get_module_class(
             module_type='Members',
             module_name=parent.member_type,
         )
@@ -262,21 +262,18 @@ class PopupModel(ConfigJoined):
             ]
 
         def after_init(self):
-            super().after_init()
-
             self.btn_reset_to_default = QPushButton('Reset to defaults')
             self.btn_reset_to_default.clicked.connect(self.reset_to_default)
             self.layout.addWidget(self.btn_reset_to_default)
 
         def reset_to_default(self):
             # from utils.helpers import convert_model_json_to_obj
-            from system import manager
 
             combo = self.parent.parent
-            model_key = combo.currentData()
-            model_obj = convert_model_json_to_obj(model_key)
+            model_json = combo.currentData()
+            model_obj = convert_model_json_to_obj(model_json)
 
-            default = manager.providers.get_model_parameters(model_obj, incl_api_data=False)
+            default = system.manager.providers.get_model_parameters(model_obj, incl_api_data=False)
             self.load_config(default)
 
             combo.currentIndexChanged.emit(combo.currentIndex())
@@ -286,7 +283,7 @@ class PopupModel(ConfigJoined):
 class PopupFields(ConfigFields):
     def __init__(self, parent, schema=None):
         super().__init__(parent=parent)
-        self.label_width = 140
+        self.auto_label_width = True
         self.schema = schema or []
 
         self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)

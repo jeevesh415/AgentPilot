@@ -4,7 +4,8 @@ from typing import List, Dict, Any
 
 import tiktoken
 
-from members.conversation.user import User
+from gui import system
+from plugins.workflows.members.conversation.user import User
 from utils import sql
 from utils.helpers import convert_to_safe_case, try_parse_json
 
@@ -115,6 +116,7 @@ class MessageHistory:
         self.messages.extend([Message(int(msg_id), role, content, member_id, alt_turn, log)
                               for msg_id, role, content, member_id, alt_turn, log in msg_log])
 
+        looper_counts = {}  # {set(source_member_id, target_member_id): count}
         member_turn_outputs = {member.member_id: None for member in self.workflow.get_members()}
         member_last_outputs = {member.member_id: None for member in self.workflow.get_members()}
         for msg in self.messages:
@@ -125,10 +127,32 @@ class MessageHistory:
             member_turn_outputs[msg.member_id] = msg.content
             member_last_outputs[msg.member_id] = msg.content
 
-            run_finished = None not in member_turn_outputs.values()  #!looper!#  # ~~ #
-            if run_finished:
-                # self.alt_turn_state = 1 - self.alt_turn_state
-                member_turn_outputs = {member.member_id: None for member in self.workflow.get_members()}
+            member_looper = self.workflow.member_looper_output(msg.member_id)
+            if member_looper is not None:
+                looper_key = tuple([member_looper['source_member_id'], member_looper['target_member_id']])
+                if looper_key not in looper_counts:
+                    looper_counts[looper_key] = 0
+                max_loops = member_looper['config'].get('max_loops', None)
+                if max_loops is not None and looper_counts[looper_key] >= max_loops:
+                    continue
+                looper_counts[looper_key] += 1
+                loop_to_member_id = member_looper['target_member_id']
+                # SET LAST OUTPUTS AND TURN OUTPUTS FOR ALL MEMBERS IN BETWEEN THE SOURCE AND THE TARGET
+                fnd = False
+                for member in self.workflow.members.values():
+                    if member.member_id == loop_to_member_id:
+                        fnd = True
+                    if not fnd:
+                        continue
+                    member_last_outputs[member.member_id] = None
+                    member_turn_outputs[member.member_id] = None
+                    if member.member_id == msg.member_id:
+                        break
+
+        run_finished = None not in member_turn_outputs.values()  #!looper!#  # ~~ #
+        if run_finished:
+            self.alt_turn_state = 1 - self.alt_turn_state
+            member_turn_outputs = {member.member_id: None for member in self.workflow.get_members()}
 
         self.workflow.reset_last_outputs()
         self.workflow.set_last_outputs(member_last_outputs)
@@ -181,8 +205,6 @@ class MessageHistory:
         member_id = member_split[-1]
         path_to_member = '.'.join(member_split[:-1])
 
-        # member_exclusive_roles = {}  # if inp['source'] == 'Output' this value is inp['source_options'] IF it != 'all'
-        # get member_workflow
         member_workflow = self.get_workflow_from_full_member_id(calling_member_id)
 
         # get member inputs and convert to full member ids
@@ -193,7 +215,6 @@ class MessageHistory:
                                 for mapping in inp['config'].get('mappings.data', []))]
         for inp in member_inputs:
             inp['full_source_member_id'] = f"{path_to_member}{inp['source_member_id']}"
-                        # and inp['config'].get('mappings.data', []) == 'Message']
 
         # inherit inputs from parent
         if member_workflow._parent_workflow is not None:
@@ -205,16 +226,11 @@ class MessageHistory:
                 if isinstance(inp_member, User):
                     del_imps.append(inp)
                     add_imps += self.get_member_inputs_from_workflow(f"{path_to_member}")
-                    # return self.get_member_inputs_from_workflow(f"{path_to_member}")
 
             for imp in del_imps:
                 member_inputs.remove(imp)
             member_inputs += add_imps
-            # only_input_id = member_inputs[0]['source_member_id']  # todo
-            # only_input = member_workflow.members.get(only_input_id, None)
-            # if isinstance(only_input, User):
-            #     return self.get_member_inputs_from_workflow(f"{path_to_member}")
-
+            
         return member_inputs
 
     def get(self, incl_roles='all', calling_member_id='0', base_member_id=None):
@@ -236,23 +252,8 @@ class MessageHistory:
                         member_structures[source_member_id] = []
                     member_structures[source_member_id].append(mapping['source_options'])
 
-        # # get show_members_as_user_role setting
-        # member_workflow = self.get_workflow_from_full_member_id(calling_member_id)
-        # # calling_member = member_workflow.members.get(member_id, None)
-        # # member_config = {} if calling_member is None else calling_member.config
-
-        # # # get the member ids to show as user
-        # user_members = []
-        # set_members_as_user = True
-        # if set_members_as_user:
-        #     user_members = [f'{path_to_member}{m_id}' for m_id in member_workflow.members if m_id != member_id]
-
-        # get all member ids to include in the response, not just inputs
         all_member_ids = input_member_ids + [calling_member_id]
 
-        # get all messages that match the criteria
-        # if message is in `incl_roles`, and the member is at the same depth,
-        # and the member is in the input list (if no inputs, include all)
         msgs = [
             {
                 'id': msg.id,
@@ -268,11 +269,7 @@ class MessageHistory:
             and (len(input_member_ids) == 0 or msg.member_id in all_member_ids)
             and ((msg.member_id not in member_exclusive_roles)
                 or msg.role in member_exclusive_roles.get(msg.member_id, []))
-               # and msg.member_id.count('.') == calling_member_id.count('.')
         ]
-
-        # member_structures = {}  # {full_member_id: structure_field}
-        # for each msg, if msg.member_id in member_structures, duplicate the message for each item in the list in values().
 
         # Duplicate messages for structured members
         expanded_msgs = []
@@ -310,7 +307,6 @@ class MessageHistory:
             }
             for msg in preloaded_msgs
             if msg['type'] == 'Context'
-            # and msg['role'] in llm_accepted_roles
         ]
 
         msgs = preloaded_msgs + msgs
@@ -364,12 +360,7 @@ class MessageHistory:
                             }
                         ]
                         continue
-                        #     "name": tool_msg_config['name'],
-                        #     "arguments": args,
-                        #     "tool_call_id": tool_msg_config['tool_call_id'],
-                        # }
-
-                    # raise NotImplementedError('3143')
+                    
                     msg_dict['role'] = 'assistant'
                     msg_dict['content'] = ''
                     msg_dict['tool_calls'] = [  # todo de-dupe
@@ -383,21 +374,14 @@ class MessageHistory:
                             "type": "function"
                         }
                     ]
-                    # msg_dict['role'] = 'assistant'
-                    # msg_dict['content'] = ''
-                    # msg_dict['function_call'] = {
-                    #     "name": tool_msg_config['name'],
-                    #     "arguments": args,
-                    # }
 
             elif msg['role'] == 'result':
-                from system import manager
                 _, res_dict = try_parse_json(msg['content'])
                 if res_dict.get('status') != 'success':
                     continue
                 call_id = res_dict.get('tool_call_id')
                 tool_uuid = res_dict.get('tool_uuid')
-                tool_name = convert_to_safe_case(manager.tools.tool_id_names.get(tool_uuid, ''))
+                tool_name = convert_to_safe_case(system.manager.tools.tool_id_names.get(tool_uuid, ''))
                 output = res_dict.get('output', msg['content'])
                 msg_dict['role'] = 'tool'  # 'user'
                 msg_dict['content'] = output
@@ -456,8 +440,6 @@ class MessageHistory:
                         msg_dict['role'] = 'user'
                         msg_dict['content'] = [new_entry]
 
-                    # raise NotImplementedError('3143')
-
             llm_msgs.append(msg_dict)
 
         # if first item is assistant, remove it (to avoid errors with some llms like claude)
@@ -474,15 +456,6 @@ class MessageHistory:
 
     def count(self, incl_roles=('user', 'assistant')):
         return len([msg for msg in self.messages if msg.role in incl_roles])
-
-    # def pop(self, indx, incl_roles=('user', 'assistant')):
-    #     seen_cnt = -1
-    #     for i, msg in enumerate(self.messages):
-    #         if msg.role not in incl_roles:
-    #             continue
-    #         seen_cnt += 1
-    #         if seen_cnt == indx:
-    #             return self.messages.pop(i)
 
     def last(self, incl_roles='all'):  # 'user', 'assistant')):
         msgs = self.get(incl_roles=incl_roles)
